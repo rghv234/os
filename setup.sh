@@ -24,23 +24,49 @@ apk update || {
 echo "Installing packages..."
 apk add --no-cache \
   labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock \
-  smplayer mupdf mako \
+  mupdf mako \
   greetd cage dbus polkit \
   tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa alsa-lib alsa-utils \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev \
+  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
   imagemagick-dev dbus-dev udisks2-dev \
-  ffmpeg-dev libavdevice-dev libswscale-dev libavformat-dev libavcodec-dev libavutil-dev \
+  ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr || {
   echo "Failed to install required packages" >&2
   exit 1
 }
 
 # Remember runtime dependencies to ensure they're not removed during cleanup
-RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock smplayer mupdf mako \
+RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp xdg-desktop-portal-wlr"
+
+# Install smplayer from source
+if ! command -v smplayer >/dev/null 2>&1; then
+  echo "Building smplayer..."
+  mkdir -p /tmp/smplayer
+  cd /tmp/smplayer
+  # Pin specific version for reproducibility
+  git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch v24.5.0 --single-branch && \
+  cd smplayer && \
+  git checkout v24.5.0 || {
+    echo "Error: smplayer repo clone failed or checkout failed." >&2
+    exit 1
+  }
+  make PREFIX=/usr || {
+    echo "Warning: smplayer build failed. Skipping." >&2
+    SKIP_SMPLAYER=1
+  }
+  if [ -z "$SKIP_SMPLAYER" ]; then
+    make install PREFIX=/usr || {
+      echo "Failed to install smplayer" >&2
+      SKIP_SMPLAYER=1
+    }
+  fi
+  cd /tmp
+  rm -rf smplayer
+fi
 
 # Install sleepwatcher-rs
 if ! command -v sleepwatcher-rs >/dev/null 2>&1; then
@@ -327,7 +353,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="Terminal"><action name="Execute"><execute>foot</execute></action></item>
     <item label="Browser"><action name="Execute"><execute>badwolf</execute></action></item>
     $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' || true )
-    <item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>
+    $( [ -z "$SKIP_SMPLAYER" ] && echo '<item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>' || true )
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
     $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>litexl</execute></action></item>' || true )
     $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
@@ -580,9 +606,8 @@ rc-update add crond || echo "Warning: Failed to add crond to boot services"
 # Cleanup - Careful not to remove runtime dependencies
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev \
-  imagemagick-dev dbus-dev udisks2-dev \
-  ffmpeg-dev libavdevice-dev libswscale-dev libavformat-dev libavcodec-dev libavutil-dev"
+  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
+  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
 
 # Store list of runtime dependencies to make sure they're not removed
 for pkg in $RUNTIME_DEPS; do
