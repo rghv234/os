@@ -46,15 +46,26 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
   bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol"
 
+# Function to get latest git tag
+get_latest_tag() {
+  repo_url="$1"
+  git ls-remote --tags "$repo_url" | grep -v "{}" | grep -v "release-" | \
+    sed 's|.*/||' | sort -V | tail -1 || echo ""
+}
+
 # Install smplayer from source
 if ! command -v smplayer >/dev/null 2>&1; then
   echo "Building smplayer..."
   mkdir -p /tmp/smplayer
   cd /tmp/smplayer
-  git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch v24.5.0 --single-branch && \
-  cd smplayer && \
-  git checkout v24.5.0 || {
-    echo "Error: smplayer repo clone failed or checkout failed." >&2
+  SMPLAYER_TAG=$(get_latest_tag "https://github.com/smplayer-dev/smplayer.git")
+  if [ -z "$SMPLAYER_TAG" ]; then
+    SMPLAYER_TAG="master"
+    echo "Warning: Could not fetch smplayer tag, falling back to master" >&2
+  fi
+  git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch "$SMPLAYER_TAG" --single-branch && \
+  cd smplayer || {
+    echo "Error: smplayer repo clone failed." >&2
     exit 1
   }
   make PREFIX=/usr || {
@@ -73,7 +84,7 @@ fi
 
 # Install wlsleephandler-rs
 echo "Installing wlsleephandler-rs..."
-cargo install --git https://github.com/fishman/sleepwatcher-rs || {
+cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
   echo "Warning: wlsleephandler-rs installation failed. Using fallback." >&2
   SKIP_WLSLEEPHANDLER=1
 }
@@ -83,7 +94,12 @@ if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
   mkdir -p /tmp/qtfm
   cd /tmp/qtfm
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch master --single-branch && \
+  QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
+  if [ -z "$QTFM_TAG" ]; then
+    QTFM_TAG="master"
+    echo "Warning: Could not fetch qtfm tag, falling back to master" >&2
+  fi
+  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch && \
   cd qtfm || {
     echo "Error: qtfm repo clone failed." >&2
     exit 1
@@ -125,7 +141,12 @@ fi
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis
 cd /tmp/orchis
-git clone https://github.com/vinceliuice/Orchis-theme.git --depth 1 && \
+ORCHIS_GTK_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-theme.git")
+if [ -z "$ORCHIS_GTK_TAG" ]; then
+  ORCHIS_GTK_TAG="master"
+  echo "Warning: Could not fetch Orchis GTK tag, falling back to master" >&2
+fi
+git clone https://github.com/vinceliuice/Orchis-theme.git --depth 1 --branch "$ORCHIS_GTK_TAG" --single-branch && \
 cd Orchis-theme || {
   echo "Error: Orchis GTK repo clone failed." >&2
   exit 1
@@ -145,7 +166,12 @@ cd /tmp
 echo "Installing Orchis KDE theme..."
 mkdir -p /tmp/orchis-kde
 cd /tmp/orchis-kde
-git clone https://github.com/vinceliuice/Orchis-kde.git --depth 1 && \
+ORCHIS_KDE_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-kde.git")
+if [ -z "$ORCHIS_KDE_TAG" ]; then
+  ORCHIS_KDE_TAG="master"
+  echo "Warning: Could not fetch Orchis KDE tag, falling back to master" >&2
+fi
+git clone https://github.com/vinceliuice/Orchis-kde.git --depth 1 --branch "$ORCHIS_KDE_TAG" --single-branch && \
 cd Orchis-kde || {
   echo "Error: Orchis KDE repo clone failed." >&2
   exit 1
@@ -587,10 +613,10 @@ echo "======================================================================"
 echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, and power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
-echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme)."
+echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme, latest version)."
 echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from menu (Orchis-Dark GTK theme)."
 echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use pavucontrol to select Bluetooth output (Orchis-Dark GTK theme)."
-echo "5. Test qtfm: open qtfm, verify image/video thumbnails and OrchisDark Qt theme."
+echo "5. Test qtfm: open qtfm, verify image/video thumbnails and OrchisDark Qt theme (latest version)."
 echo "6. Test clipboard: copy text, run 'wl-paste' to verify (wl-clipboard)."
 echo "7. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
 echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark GTK theme)."
@@ -605,6 +631,7 @@ echo "16. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet
 echo "17. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
 echo "18. Check Wayland: Run 'wayland-info' to verify compositor details."
 echo "19. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "20. Check source versions: smplayer, qtfm, Orchis themes should be latest tagged releases."
 echo "======================================================================"
 
 exit 0
