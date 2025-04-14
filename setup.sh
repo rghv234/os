@@ -27,12 +27,13 @@ apk add --no-cache \
   mupdf mako lite-xl image-roll \
   greetd cage dbus polkit \
   tlp elogind wlr-randr upower iw util-linux udev \
-  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils \
+  pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr \
-  sassc qt5ct papirus-icon-theme || {
+  sassc qt5ct papirus-icon-theme \
+  bluez bluez-openrc blueman linux-firmware || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -40,8 +41,9 @@ apk add --no-cache \
 # Define runtime dependencies to protect during cleanup
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
-  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp \
-  xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg"
+  pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
+  xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
+  bluez blueman linux-firmware"
 
 # Install smplayer from source
 if ! command -v smplayer >/dev/null 2>&1; then
@@ -154,6 +156,21 @@ cd Orchis-kde || {
 cd /tmp
 rm -rf /tmp/orchis*
 
+# Configure Bluetooth
+echo "Configuring Bluetooth..."
+rc-update add bluetooth || echo "Warning: Failed to add bluetooth to boot services"
+cat > /etc/bluetooth/main.conf << EOL
+[General]
+Name = AlpineWayland
+DiscoverableTimeout = 0
+AlwaysPairable = true
+AutoEnable = true
+
+[Policy]
+AutoEnable = true
+EOL
+echo "uinput" >> /etc/modules || echo "Warning: Failed to add uinput module"
+
 # Configure TLP
 echo "Configuring TLP..."
 rc-update add tlp || echo "Warning: Failed to add TLP to boot services"
@@ -212,6 +229,7 @@ EOL
 addgroup greetd video 2>/dev/null || true
 addgroup greetd seat 2>/dev/null || true
 addgroup greetd input 2>/dev/null || true
+addgroup greetd bluetooth 2>/dev/null || true
 # Ensure gtkgreet uses Orchis theme
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   mkdir -p /usr/share/themes
@@ -258,6 +276,7 @@ mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,
   exit 1
 }
 addgroup "$USER_NAME" audio 2>/dev/null || true
+addgroup "$USER_NAME" bluetooth 2>/dev/null || true
 
 # Configure wlsleephandler-rs or fallback
 if [ -z "$SKIP_WLSLEEPHANDLER" ] && command -v wlsleephandler-rs >/dev/null 2>&1; then
@@ -338,6 +357,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
     $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>' || true )
     $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
+    <item label="Bluetooth"><action name="Execute"><execute>blueman-manager</execute></action></item>
     <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
     <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
@@ -401,6 +421,7 @@ sfwbar &
 mako &
 clipman &
 xdg-desktop-portal-wlr &
+blueman-applet &
 EOL
 
 # Configure badwolf
@@ -531,23 +552,25 @@ fi
 
 # Verification
 echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, elogind, qtfm, clipboard, screenshots, and power management."
+echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, and power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
 echo "2. Test sound: play a file in smplayer."
-echo "3. Test qtfm: open qtfm, verify image/video thumbnails and Orchis theme."
-echo "4. Test clipboard: copy text, run 'clipman --history' to verify."
-echo "5. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
-echo "6. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr)."
-echo "7. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
-echo "8. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
-echo "9. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
-echo "10. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
-echo "11. Compare to ChromeOS Flex (expect 10-20% better battery)."
-echo "12. Check elogind/TLP coordination: systemctl status tlp (if running)."
-echo "13. Check themes: qtfm/smplayer should use Orchis colors (fusion style), gtkgreet/sfwbar should use Orchis-Dark, all apps should use Papirus-Dark icons."
-echo "14. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "15. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from menu."
+echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use 'pavucontrol' to select Bluetooth output."
+echo "5. Test qtfm: open qtfm, verify image/video thumbnails and Orchis theme."
+echo "6. Test clipboard: copy text, run 'clipman --history' to verify."
+echo "7. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
+echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr)."
+echo "9. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
+echo "10. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
+echo "11. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
+echo "12. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
+echo "13. Compare to ChromeOS Flex (expect 10-20% better battery)."
+echo "14. Check elogind/TLP coordination: systemctl status tlp (if running)."
+echo "15. Check themes: qtfm/smplayer should use Orchis colors (fusion style), gtkgreet/sfwbar should use Orchis-Dark, all apps should use Papirus-Dark icons."
+echo "16. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
+echo "17. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "If issues, check /var/log/messages or dmesg."
 echo "======================================================================"
 
