@@ -33,7 +33,8 @@ apk add --no-cache \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr \
   sassc qt5ct papirus-icon-theme \
-  bluez bluez-openrc blueman linux-firmware || {
+  bluez bluez-openrc blueman linux-firmware \
+  mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -43,7 +44,7 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
-  bluez blueman linux-firmware"
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol"
 
 # Install smplayer from source
 if ! command -v smplayer >/dev/null 2>&1; then
@@ -212,6 +213,18 @@ rc-update add elogind || echo "Warning: Failed to add elogind to boot services"
 rc-update add dbus || echo "Warning: Failed to add dbus to boot services"
 rc-update add udev || echo "Warning: Failed to add udev to boot services"
 
+# Configure PAM for XDG_RUNTIME_DIR
+echo "Configuring PAM for XDG_RUNTIME_DIR..."
+cat > /etc/pam.d/greetd << EOL
+auth       required   pam_rundir.so
+auth       required   pam_unix.so
+account    required   pam_unix.so
+session    required   pam_rundir.so
+session    required   pam_limits.so
+session    required   pam_env.so
+session    required   pam_unix.so
+EOL
+
 # Configure greetd and gtkgreet
 echo "Configuring greetd login manager..."
 rc-update add greetd || echo "Warning: Failed to add greetd to boot services"
@@ -277,6 +290,7 @@ mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,
 }
 addgroup "$USER_NAME" audio 2>/dev/null || true
 addgroup "$USER_NAME" bluetooth 2>/dev/null || true
+addgroup "$USER_NAME" pipewire 2>/dev/null || true
 
 # Configure wlsleephandler-rs or fallback
 if [ -z "$SKIP_WLSLEEPHANDLER" ] && command -v wlsleephandler-rs >/dev/null 2>&1; then
@@ -358,6 +372,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>' || true )
     $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
     <item label="Bluetooth"><action name="Execute"><execute>blueman-manager</execute></action></item>
+    <item label="Audio"><action name="Execute"><execute>pavucontrol</execute></action></item>
     <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
     <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
@@ -368,6 +383,7 @@ QT_QPA_PLATFORM=wayland
 XDG_SESSION_TYPE=wayland
 XDG_SESSION_DESKTOP=labwc
 XDG_CURRENT_DESKTOP=labwc:wlroots
+WAYLAND_DISPLAY=wayland-0
 GDK_BACKEND=wayland,x11
 SDL_VIDEODRIVER=wayland
 _JAVA_AWT_WM_NONREPARENTING=1
@@ -395,7 +411,6 @@ EOL
 if [ -z "$SKIP_QTFM" ]; then
   cat > "$USER_HOME/.config/qtfm/qtfm.conf" << EOL
 showThumbnails=true
-theme=Adwaita-dark
 EOL
 fi
 
@@ -422,6 +437,8 @@ mako &
 clipman &
 xdg-desktop-portal-wlr &
 blueman-applet &
+pipewire &
+wireplumber &
 EOL
 
 # Configure badwolf
@@ -439,26 +456,36 @@ if grep -q "GenuineIntel" /proc/cpuinfo; then
 elif grep -q "AuthenticAMD" /proc/cpuinfo; then
   [ -f /sys/devices/system/cpu/amd_pstate/status ] && echo active > /sys/devices/system/cpu/amd_pstate/status
 fi
+
+# Wi-Fi: Power-save only if present
 for dev in /sys/class/net/wlan*; do
-  [ -e "$dev" ] && iw dev $(basename "$dev") set power_save on
+  [ -e "\$dev" ] && iw dev \$(basename "\$dev") set power_save on
 done
+
+# Ethernet power management
 for eth in /sys/class/net/e*/device/power/control; do
-  [ -w "$eth" ] && echo auto > "$eth"
+  [ -w "\$eth" ] && echo auto > "\$eth"
 done
+
+# GPU: Low power if supported
 for gpu in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
-  [ -f "$gpu" ] && echo low > "$gpu"
+  [ -f "\$gpu" ] && echo low > "\$gpu"
 done
 [ -f /sys/module/nvidia/parameters/modeset ] && echo 0 > /sys/module/nvidia/parameters/modeset
+
+# Display: Brightness based on power state
 for b in /sys/class/backlight/*/brightness; do
-  [ -w "$b" ] || continue
-  max=$(cat ${b%brightness}max_brightness)
+  [ -w "\$b" ] || continue
+  max=\$(cat \${b%brightness}max_brightness)
   if grep -q 0 /sys/class/power_supply/AC*/online 2>/dev/null || \
      grep -q 0 /sys/class/power_supply/ADP*/online 2>/dev/null; then
-    echo $((max * 30 / 100)) > "$b"
+    echo \$((max * 30 / 100)) > "\$b"
   else
-    echo $((max * 70 / 100)) > "$b"
+    echo \$((max * 70 / 100)) > "\$b"
   fi
 done
+
+# Audio: Enable power save if HDA detected
 [ -d /sys/module/snd_hda_intel ] && echo 1 > /sys/module/snd_hda_intel/parameters/power_save
 EOL
 chmod +x /etc/local.d/power-optimize.start
@@ -466,18 +493,23 @@ chmod +x /etc/local.d/power-optimize.start
 # Dynamic HDD/SSD optimization
 cat > /etc/local.d/disk-optimize.start << EOL
 #!/bin/sh
+# Handle both traditional disks and NVMe
 for disk in /dev/sd[a-z] /dev/nvme[0-9]n[0-9]; do
-  if [ -b "$disk" ]; then
-    if [ "${disk:0:8}" = "/dev/nvme" ]; then
-      echo mq-deadline > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
+  if [ -b "\$disk" ]; then
+    if [ "\${disk:0:8}" = "/dev/nvme" ]; then
+      # NVMe device
+      echo mq-deadline > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
     else
-      rotational=$(cat /sys/block/$(basename $disk)/queue/rotational 2>/dev/null || echo 0)
-      if [ "$rotational" = "1" ]; then
-        hdparm -B 128 -S 24 "$disk" 2>/dev/null
-        echo bfq > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
+      # SATA device - check if HDD or SSD
+      rotational=\$(cat /sys/block/\$(basename \$disk)/queue/rotational 2>/dev/null || echo 0)
+      if [ "\$rotational" = "1" ]; then
+        # HDD: spindown, bfq, writeback
+        hdparm -B 128 -S 24 "\$disk" 2>/dev/null
+        echo bfq > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
         echo 1500 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null
       else
-        echo mq-deadline > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
+        # SSD: mq-deadline
+        echo mq-deadline > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
       fi
     fi
   fi
@@ -555,23 +587,24 @@ echo "======================================================================"
 echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, and power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
-echo "2. Test sound: play a file in smplayer."
-echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from menu."
-echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use 'pavucontrol' to select Bluetooth output."
-echo "5. Test qtfm: open qtfm, verify image/video thumbnails and Orchis theme."
-echo "6. Test clipboard: copy text, run 'clipman --history' to verify."
+echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme)."
+echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from menu (Orchis-Dark GTK theme)."
+echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use pavucontrol to select Bluetooth output (Orchis-Dark GTK theme)."
+echo "5. Test qtfm: open qtfm, verify image/video thumbnails and OrchisDark Qt theme."
+echo "6. Test clipboard: copy text, run 'wl-paste' to verify (wl-clipboard)."
 echo "7. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
-echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr)."
+echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark GTK theme)."
 echo "9. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
 echo "10. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
 echo "11. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
 echo "12. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
 echo "13. Compare to ChromeOS Flex (expect 10-20% better battery)."
 echo "14. Check elogind/TLP coordination: systemctl status tlp (if running)."
-echo "15. Check themes: qtfm/smplayer should use Orchis colors (fusion style), gtkgreet/sfwbar should use Orchis-Dark, all apps should use Papirus-Dark icons."
+echo "15. Check themes: qtfm/smplayer should use OrchisDark Qt theme (fusion style), gtkgreet/sfwbar/badwolf/image-roll/blueman/pavucontrol should use Orchis-Dark GTK theme, all apps should use Papirus-Dark icons."
 echo "16. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "17. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
-echo "If issues, check /var/log/messages or dmesg."
+echo "17. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
+echo "18. Check Wayland: Run 'wayland-info' to verify compositor details."
+echo "19. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "======================================================================"
 
 exit 0
