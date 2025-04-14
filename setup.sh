@@ -41,7 +41,7 @@ apk add --no-cache \
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp \
-  xdg-desktop-portal-wlr qt5ct papirus-icon-theme"
+  xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg"
 
 # Install smplayer from source
 if ! command -v smplayer >/dev/null 2>&1; then
@@ -112,7 +112,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
         echo "Failed to install qtfm" >&2
         SKIP_QTFM=1
       }
-    fi
+    }
   }
   cd /tmp
   rm -rf qtfm
@@ -252,7 +252,7 @@ else
   fi
 fi
 
-echo "Configuring for user: $USER_NAME  $USER_NAME (home: $USER_HOME)"
+echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
 mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct} || {
   echo "Failed to create config directories" >&2
   exit 1
@@ -547,6 +547,7 @@ echo "11. Compare to ChromeOS Flex (expect 10-20% better battery)."
 echo "12. Check elogind/TLP coordination: systemctl status tlp (if running)."
 echo "13. Check themes: qtfm/smplayer should use Orchis colors (fusion style), gtkgreet/sfwbar should use Orchis-Dark, all apps should use Papirus-Dark icons."
 echo "14. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
+echo "15. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "If issues, check /var/log/messages or dmesg."
 echo "======================================================================"
 
