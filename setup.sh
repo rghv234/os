@@ -68,32 +68,31 @@ if ! command -v smplayer >/dev/null 2>&1; then
   rm -rf smplayer
 fi
 
-# Install sleepwatcher-rs
-if ! command -v sleepwatcher-rs >/dev/null 2>&1; then
-  echo "Building sleepwatcher-rs..."
-  mkdir -p /tmp/sleepwatcher-rs
-  cd /tmp/sleepwatcher-rs
+# Install wlsleephandler-rs
+if ! command -v wlsleephandler-rs >/dev/null 2>&1; then
+  echo "Building wlsleephandler-rs..."
+  mkdir -p /tmp/wlsleephandler-rs
+  cd /tmp/wlsleephandler-rs
   # Pin specific commit for reproducibility
-  git clone https://github.com/Valiak/sleepwatcher-rs.git --depth 1 --branch main --single-branch && \
-  cd sleepwatcher-rs && \
-  git checkout 7a5bf9d5f8e0a9b1e2c8b9b3c5d4e6f7a8b9c0d1 || {
-    echo "Warning: sleepwatcher-rs repo not found or checkout failed. Using fallback suspend."
+  git clone https://github.com/fishman/wlsleephandler-rs.git --depth 1 --branch main --single-branch && \
+  cd wlsleephandler-rs || {
+    echo "Warning: wlsleephandler-rs repo not found or checkout failed. Using fallback suspend."
     FALLBACK_SUSPEND=1
   }
   if [ -z "$FALLBACK_SUSPEND" ]; then
     cargo build --release || {
-      echo "Warning: sleepwatcher-rs build failed. Using fallback."
+      echo "Warning: wlsleephandler-rs build failed. Using fallback."
       FALLBACK_SUSPEND=1
     }
     if [ -z "$FALLBACK_SUSPEND" ]; then
-      cp target/release/sleepwatcher-rs /usr/local/bin/ || {
-        echo "Failed to install sleepwatcher-rs" >&2
+      cp target/release/wlsleephandler-rs /usr/local/bin/ || {
+        echo "Failed to install wlsleephandler-rs" >&2
         FALLBACK_SUSPEND=1
       }
     fi
   fi
   cd /tmp
-  rm -rf sleepwatcher-rs
+  rm -rf wlsleephandler-rs
 fi
 
 # Install image-roll
@@ -103,8 +102,7 @@ if ! command -v image-roll >/dev/null 2>&1; then
   cd /tmp/image-roll
   # Pin specific commit for reproducibility
   git clone https://github.com/weclaw1/image-roll.git --depth 1 --branch main --single-branch && \
-  cd image-roll && \
-  git checkout b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0 || {
+  cd image-roll || {
     echo "Warning: image-roll repo not found or checkout failed. Skipping."
     SKIP_IMAGE_ROLL=1
   }
@@ -129,11 +127,9 @@ if ! command -v litexl >/dev/null 2>&1; then
   echo "Building litexl..."
   mkdir -p /tmp/litexl
   cd /tmp/litexl
-  # Pin specific commit for reproducibility
   git clone https://github.com/lite-xl/lite-xl.git --depth 1 --branch master --single-branch && \
-  cd lite-xl && \
-  git checkout a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0 || {
-    echo "Warning: litexl repo not found or checkout failed. Skipping."
+  cd lite-xl || {
+    echo "Warning: litexl repo not found or clone failed. Skipping."
     SKIP_LITEXL=1
   }
   if [ -z "$SKIP_LITEXL" ]; then
@@ -157,11 +153,9 @@ if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
   mkdir -p /tmp/qtfm
   cd /tmp/qtfm
-  # Pin specific commit for reproducibility
   git clone https://github.com/rodlie/qtfm.git --depth 1 --branch master --single-branch && \
-  cd qtfm && \
-  git checkout c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0 || {
-    echo "Error: qtfm repo clone failed or checkout failed." >&2
+  cd qtfm || {
+    echo "Error: qtfm repo clone failed." >&2
     exit 1
   }
   mkdir build
@@ -307,7 +301,7 @@ fi
 echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
 mkdir -p "$USER_HOME/.config/labwc" "$USER_HOME/.config/sfwbar" \
   "$USER_HOME/.config/foot" "$USER_HOME/.config/qtfm" \
-  "$USER_HOME/.config/sleepwatcher-rs" "$USER_HOME/.config/badwolf" \
+  "$USER_HOME/.config/wlsleephandler-rs" "$USER_HOME/.config/badwolf" \
   "$USER_HOME/.config/mako" "$USER_HOME/.config/clipman" || {
   echo "Failed to create config directories" >&2
   exit 1
@@ -411,15 +405,15 @@ history_size = 50
 persistent = true
 EOL
 
-# Configure sleepwatcher-rs or fallback with more efficient wait
+# Configure wlsleephandler-rs or fallback with more efficient wait
 if [ -z "$FALLBACK_SUSPEND" ]; then
-  echo "Configuring sleepwatcher-rs..."
-  cat > "$USER_HOME/.config/sleepwatcher-rs/config.toml" << EOL
+  echo "Configuring wlsleephandler-rs..."
+  cat > "$USER_HOME/.config/wlsleephandler-rs/config.toml" << EOL
 [suspend]
 idle_timeout = 300
 command = "loginctl suspend"
 EOL
-  AUTOSTART="dbus-run-session -- sleepwatcher-rs &"
+  AUTOSTART="dbus-run-session -- wlsleephandler-rs &"
 else
   echo "Configuring fallback idle suspend script..."
   cat > /usr/local/bin/idle-suspend.sh << EOL
