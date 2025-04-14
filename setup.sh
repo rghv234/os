@@ -102,7 +102,7 @@ if ! command -v image-roll >/dev/null 2>&1; then
   mkdir -p /tmp/image-roll
   cd /tmp/image-roll
   # Pin specific commit for reproducibility
-  git clone https://codeberg.org/Valexi/image-roll.git --depth 1 --branch main --single-branch && \
+  git clone https://github.com/weclaw1/image-roll.git --depth 1 --branch main --single-branch && \
   cd image-roll && \
   git checkout b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0 || {
     echo "Warning: image-roll repo not found or checkout failed. Skipping."
