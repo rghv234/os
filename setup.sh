@@ -31,7 +31,8 @@ apk add --no-cache \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
-  clipman grim slurp xdg-desktop-portal-wlr || {
+  clipman grim slurp xdg-desktop-portal-wlr \
+  sassc qt5ct papirus-icon-theme || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -39,7 +40,8 @@ apk add --no-cache \
 # Define runtime dependencies to protect during cleanup
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
-  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp xdg-desktop-portal-wlr"
+  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp \
+  xdg-desktop-portal-wlr qt5ct papirus-icon-theme"
 
 # Install smplayer from source
 if ! command -v smplayer >/dev/null 2>&1; then
@@ -61,7 +63,7 @@ if ! command -v smplayer >/dev/null 2>&1; then
       echo "Failed to install smplayer" >&2
       SKIP_SMPLAYER=1
     }
-  fi
+  }
   cd /tmp
   rm -rf smplayer
 fi
@@ -111,10 +113,46 @@ if ! command -v qtfm >/dev/null 2>&1; then
         SKIP_QTFM=1
       }
     fi
-  fi
+  }
   cd /tmp
   rm -rf qtfm
 fi
+
+# Install Orchis GTK theme and wallpaper
+echo "Installing Orchis GTK theme and wallpaper..."
+mkdir -p /tmp/orchis
+cd /tmp/orchis
+git clone https://github.com/vinceliuice/Orchis-theme.git --depth 1 && \
+cd Orchis-theme || {
+  echo "Error: Orchis GTK repo clone failed." >&2
+  exit 1
+}
+./install.sh -d "$USER_HOME/.themes" -t default -c dark -s compact --tweaks primary || {
+  echo "Warning: Orchis GTK theme installation failed." >&2
+  SKIP_ORCHIS_GTK=1
+}
+mkdir -p /usr/share/backgrounds
+cp src/wallpapers/wallpaper-dark.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
+  echo "Warning: Orchis wallpaper copy failed." >&2
+  SKIP_WALLPAPER=1
+}
+cd /tmp
+
+# Install Orchis KDE theme
+echo "Installing Orchis KDE theme..."
+mkdir -p /tmp/orchis-kde
+cd /tmp/orchis-kde
+git clone https://github.com/vinceliuice/Orchis-kde.git --depth 1 && \
+cd Orchis-kde || {
+  echo "Error: Orchis KDE repo clone failed." >&2
+  exit 1
+}
+./install.sh -d "$USER_HOME/.themes" || {
+  echo "Warning: Orchis KDE theme installation failed." >&2
+  SKIP_ORCHIS_KDE=1
+}
+cd /tmp
+rm -rf /tmp/orchis*
 
 # Configure TLP
 echo "Configuring TLP..."
@@ -165,7 +203,7 @@ cat > /etc/greetd/config.toml << EOL
 vt = "next"
 switch = true
 [default_session]
-command = "cage -s -- gtkgreet"
+command = "cage -s -- wbg /usr/share/backgrounds/orchis-wallpaper.jpg -- gtkgreet"
 user = "greetd"
 EOL
 cat > /etc/greetd/environments << EOL
@@ -174,6 +212,13 @@ EOL
 addgroup greetd video 2>/dev/null || true
 addgroup greetd seat 2>/dev/null || true
 addgroup greetd input 2>/dev/null || true
+# Ensure gtkgreet uses Orchis theme
+if [ -z "$SKIP_ORCHIS_GTK" ]; then
+  mkdir -p /usr/share/themes
+  cp -r "$USER_HOME/.themes/Orchis-Dark" /usr/share/themes/ || {
+    echo "Warning: Failed to copy Orchis theme for gtkgreet." >&2
+  }
+fi
 
 # User configuration
 echo "User configuration..."
@@ -207,8 +252,8 @@ else
   fi
 fi
 
-echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
-mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman} || {
+echo "Configuring for user: $USER_NAME  $USER_NAME (home: $USER_HOME)"
+mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct} || {
   echo "Failed to create config directories" >&2
   exit 1
 }
@@ -250,9 +295,30 @@ EOL
     echo "Failed to make idle-suspend.sh executable" >&2
     exit 1
   }
-  AUTOSTART="dbus-run-session"],
-    "contentType": "text/x-shellscript"
-  } -- idle-suspend.sh &"
+  AUTOSTART="dbus-run-session -- idle-suspend.sh &"
+fi
+
+# Configure GTK theme and icons
+if [ -z "$SKIP_ORCHIS_GTK" ]; then
+  cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
+[Settings]
+gtk-theme-name=Orchis-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-font-name=Sans 10
+EOL
+  ln -sf "$USER_HOME/.themes/Orchis-Dark/gtk-4.0" "$USER_HOME/.config/gtk-4.0" || {
+    echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
+  }
+fi
+
+# Configure Qt theme and icons
+if [ -z "$SKIP_ORCHIS_KDE" ]; then
+  cat > "$USER_HOME/.config/qt5ct/qt5ct.conf" << EOL
+[Appearance]
+style=fusion
+color_scheme=OrchisDark
+icon_theme=Papirus-Dark
+EOL
 fi
 
 # Configure labwc
@@ -270,8 +336,8 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' || true )
     $( [ -z "$SKIP_SMPLAYER" ] && echo '<item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>' || true )
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
-    <item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>
-    <item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>
+    $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>' || true )
+    $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
     <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
     <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
@@ -285,6 +351,7 @@ XDG_CURRENT_DESKTOP=labwc:wlroots
 GDK_BACKEND=wayland,x11
 SDL_VIDEODRIVER=wayland
 _JAVA_AWT_WM_NONREPARENTING=1
+QT_STYLE_OVERRIDE=fusion
 EOL
 
 # Configure sfwbar
@@ -329,7 +396,7 @@ EOL
 # Configure labwc autostart
 cat > "$USER_HOME/.config/labwc/autostart" << EOL
 $AUTOSTART
-wbg /usr/share/backgrounds/default.png &
+wbg /usr/share/backgrounds/orchis-wallpaper.jpg &
 sfwbar &
 mako &
 clipman &
@@ -449,15 +516,15 @@ rc-update add crond || echo "Warning: Failed to add crond to boot services"
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
+  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev sassc"
 for pkg in $RUNTIME_DEPS; do
   BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
 done
 apk del $BUILDTIME_DEPS 2>/dev/null || true
 rm -rf /tmp/* 2>/dev/null || true
 
-# Create default background
-if [ ! -f /usr/share/backgrounds/default.png ]; then
+# Create fallback background if needed
+if [ ! -f /usr/share/backgrounds/orchis-wallpaper.jpg ]; then
   mkdir -p /usr/share/backgrounds
   echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /usr/share/backgrounds/default.png
 fi
@@ -466,9 +533,9 @@ fi
 echo "======================================================================"
 echo "Setup complete! Wayland with labwc, gtkgreet, sound, elogind, qtfm, clipboard, screenshots, and power management."
 echo "To verify:"
-echo "1. Reboot and login via gtkgreet (labwc session)."
+echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
 echo "2. Test sound: play a file in smplayer."
-echo "3. Test qtfm: open qtfm, verify image and video thumbnails."
+echo "3. Test qtfm: open qtfm, verify image/video thumbnails and Orchis theme."
 echo "4. Test clipboard: copy text, run 'clipman --history' to verify."
 echo "5. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
 echo "6. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr)."
@@ -478,6 +545,8 @@ echo "9. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadlin
 echo "10. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
 echo "11. Compare to ChromeOS Flex (expect 10-20% better battery)."
 echo "12. Check elogind/TLP coordination: systemctl status tlp (if running)."
+echo "13. Check themes: qtfm/smplayer should use Orchis colors (fusion style), gtkgreet/sfwbar should use Orchis-Dark, all apps should use Papirus-Dark icons."
+echo "14. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
 echo "If issues, check /var/log/messages or dmesg."
 echo "======================================================================"
 
