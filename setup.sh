@@ -31,7 +31,8 @@ apk add --no-cache \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev \
   imagemagick-dev dbus-dev udisks2-dev \
-  ffmpeg-dev libavdevice-dev libswscale-dev libavformat-dev libavcodec-dev libavutil-dev || {
+  ffmpeg-dev libavdevice-dev libswscale-dev libavformat-dev libavcodec-dev libavutil-dev \
+  clipman grim slurp xdg-desktop-portal-wlr || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -39,7 +40,7 @@ apk add --no-cache \
 # Remember runtime dependencies to ensure they're not removed during cleanup
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock smplayer mupdf mako \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
-  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils"
+  pipewire wireplumber pipewire-alsa alsa-lib alsa-utils clipman grim slurp xdg-desktop-portal-wlr"
 
 # Install sleepwatcher-rs
 if ! command -v sleepwatcher-rs >/dev/null 2>&1; then
@@ -281,7 +282,7 @@ echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
 mkdir -p "$USER_HOME/.config/labwc" "$USER_HOME/.config/sfwbar" \
   "$USER_HOME/.config/foot" "$USER_HOME/.config/qtfm" \
   "$USER_HOME/.config/sleepwatcher-rs" "$USER_HOME/.config/badwolf" \
-  "$USER_HOME/.config/mako" || {
+  "$USER_HOME/.config/mako" "$USER_HOME/.config/clipman" || {
   echo "Failed to create config directories" >&2
   exit 1
 }
@@ -330,7 +331,8 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
     $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>litexl</execute></action></item>' || true )
     $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
-    <item label="Exit"><action name="Exit"/></item>
+    <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
+    <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
 </openbox_menu>
 EOL
@@ -374,6 +376,13 @@ cat > "$USER_HOME/.config/mako/config" << EOL
 background-color=#1d2021
 text-color=#d5c4a1
 border-color=#32302f
+EOL
+
+# Configure clipman
+cat > "$USER_HOME/.config/clipman/config" << EOL
+[clipman]
+history_size = 50
+persistent = true
 EOL
 
 # Configure sleepwatcher-rs or fallback with more efficient wait
@@ -420,13 +429,15 @@ EOL
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
 fi
 
-# Configure labwc autostart - removed pipewire/wireplumber since they're system services
+# Configure labwc autostart
 cat > "$USER_HOME/.config/labwc/autostart" << EOL
 $AUTOSTART
 wbg /usr/share/backgrounds/default.png &
 sfwbar &
 waylock &
 mako &
+clipman &
+xdg-desktop-portal-wlr &
 EOL
 
 # Configure badwolf
@@ -591,18 +602,21 @@ fi
 
 # Verification
 echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, elogind, qtfm (video thumbnails), and dynamic power management."
+echo "Setup complete! Wayland with labwc, gtkgreet, sound, elogind, qtfm (video thumbnails), clipboard, screenshots, and dynamic power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session)."
 echo "2. Test sound: play a file in smplayer."
 echo "3. Test qtfm: open qtfm, verify image and video thumbnails."
-echo "4. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
-echo "5. Idle 5 minutes to confirm suspend (~0.5W)."
-echo "6. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
-echo "7. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
-echo "8. Compare to ChromeOS Flex (expect 10-20% better battery)."
-echo "9. Check elogind/TLP coordination: systemctl status tlp (if running)"
-echo "If issues (sound, suspend, qtfm, power), check /var/log/messages or dmesg."
+echo "4. Test clipboard: copy text, run 'clipman --history' to verify."
+echo "5. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
+echo "6. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr)."
+echo "7. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
+echo "8. Idle 5 minutes to confirm suspend (~0.5W)."
+echo "9. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
+echo "10. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
+echo "11. Compare to ChromeOS Flex (expect 10-20% better battery)."
+echo "12. Check elogind/TLP coordination: systemctl status tlp (if running)."
+echo "If issues (sound, suspend, qtfm, clipboard, screenshots, power), check /var/log/messages or dmesg."
 echo "======================================================================"
 
-ex
+exit 0
