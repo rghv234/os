@@ -24,7 +24,7 @@ apk update || {
 echo "Installing packages..."
 apk add --no-cache \
   labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock \
-  mupdf mako lite-xl image-roll \
+  mupdf mako lite-xl image-roll drawing \
   greetd cage dbus polkit \
   tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
@@ -41,7 +41,7 @@ apk add --no-cache \
 
 # Define runtime dependencies to protect during cleanup
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
-  greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
+  drawing greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
   bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol"
@@ -394,6 +394,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="Browser"><action name="Execute"><execute>badwolf</execute></action></item>
     $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' || true )
     $( [ -z "$SKIP_SMPLAYER" ] && echo '<item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>' || true )
+    <item label="Drawing"><action name="Execute"><execute>drawing</execute></action></item>
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
     $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>' || true )
     $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
@@ -610,7 +611,7 @@ fi
 
 # Verification
 echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, and power management."
+echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
 echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme, latest version)."
@@ -620,18 +621,19 @@ echo "5. Test qtfm: open qtfm, verify image/video thumbnails and OrchisDark Qt t
 echo "6. Test clipboard: copy text, run 'wl-paste' to verify (wl-clipboard)."
 echo "7. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
 echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark GTK theme)."
-echo "9. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
-echo "10. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
-echo "11. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
-echo "12. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
-echo "13. Compare to ChromeOS Flex (expect 10-20% better battery)."
-echo "14. Check elogind/TLP coordination: systemctl status tlp (if running)."
-echo "15. Check themes: qtfm/smplayer should use OrchisDark Qt theme (fusion style), gtkgreet/sfwbar/badwolf/image-roll/blueman/pavucontrol should use Orchis-Dark GTK theme, all apps should use Papirus-Dark icons."
-echo "16. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "17. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
-echo "18. Check Wayland: Run 'wayland-info' to verify compositor details."
-echo "19. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "9. Test drawing: select 'Drawing' from menu, draw a shape, save as PNG, verify Orchis-Dark theme and Papirus icons."
+echo "10. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
+echo "11. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
+echo "12. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
+echo "13. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
+echo "14. Compare to ChromeOS Flex (expect 10-20% better battery)."
+echo "15. Check elogind/TLP coordination: systemctl status tlp (if running)."
+echo "16. Check themes: qtfm/smplayer should use OrchisDark Qt theme (fusion style), gtkgreet/sfwbar/badwolf/image-roll/blueman/pavucontrol/drawing should use Orchis-Dark GTK theme, all apps should use Papirus-Dark icons."
+echo "17. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
+echo "18. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
+echo "19. Check Wayland: Run 'wayland-info' to verify compositor details."
 echo "20. Check source versions: smplayer, qtfm, Orchis themes should be latest tagged releases."
+echo "21. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "======================================================================"
 
 exit 0
