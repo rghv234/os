@@ -24,7 +24,7 @@ apk update || {
 echo "Installing packages..."
 apk add --no-cache \
   labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock \
-  mupdf mako \
+  mupdf mako lite-xl image-roll \
   greetd cage dbus polkit \
   tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa alsa-lib alsa-utils \
@@ -69,84 +69,7 @@ if ! command -v smplayer >/dev/null 2>&1; then
 fi
 
 # Install wlsleephandler-rs
-if ! command -v wlsleephandler-rs >/dev/null 2>&1; then
-  echo "Building wlsleephandler-rs..."
-  mkdir -p /tmp/wlsleephandler-rs
-  cd /tmp/wlsleephandler-rs
-  # Pin specific commit for reproducibility
-  git clone https://github.com/fishman/wlsleephandler-rs.git --depth 1 --branch main --single-branch && \
-  cd wlsleephandler-rs || {
-    echo "Warning: wlsleephandler-rs repo not found or checkout failed. Using fallback suspend."
-    FALLBACK_SUSPEND=1
-  }
-  if [ -z "$FALLBACK_SUSPEND" ]; then
-    cargo build --release || {
-      echo "Warning: wlsleephandler-rs build failed. Using fallback."
-      FALLBACK_SUSPEND=1
-    }
-    if [ -z "$FALLBACK_SUSPEND" ]; then
-      cp target/release/wlsleephandler-rs /usr/local/bin/ || {
-        echo "Failed to install wlsleephandler-rs" >&2
-        FALLBACK_SUSPEND=1
-      }
-    fi
-  fi
-  cd /tmp
-  rm -rf wlsleephandler-rs
-fi
-
-# Install image-roll
-if ! command -v image-roll >/dev/null 2>&1; then
-  echo "Building image-roll..."
-  mkdir -p /tmp/image-roll
-  cd /tmp/image-roll
-  # Pin specific commit for reproducibility
-  git clone https://github.com/weclaw1/image-roll.git --depth 1 --branch main --single-branch && \
-  cd image-roll || {
-    echo "Warning: image-roll repo not found or checkout failed. Skipping."
-    SKIP_IMAGE_ROLL=1
-  }
-  if [ -z "$SKIP_IMAGE_ROLL" ]; then
-    cargo build --release || {
-      echo "Warning: image-roll build failed. Skipping."
-      SKIP_IMAGE_ROLL=1
-    }
-    if [ -z "$SKIP_IMAGE_ROLL" ]; then
-      cp target/release/image-roll /usr/local/bin/ || {
-        echo "Failed to install image-roll" >&2
-        SKIP_IMAGE_ROLL=1
-      }
-    fi
-  fi
-  cd /tmp
-  rm -rf image-roll
-fi
-
-# Install litexl
-if ! command -v litexl >/dev/null 2>&1; then
-  echo "Building litexl..."
-  mkdir -p /tmp/litexl
-  cd /tmp/litexl
-  git clone https://github.com/lite-xl/lite-xl.git --depth 1 --branch master --single-branch && \
-  cd lite-xl || {
-    echo "Warning: litexl repo not found or clone failed. Skipping."
-    SKIP_LITEXL=1
-  }
-  if [ -z "$SKIP_LITEXL" ]; then
-    make || {
-      echo "Warning: litexl build failed. Skipping."
-      SKIP_LITEXL=1
-    }
-    if [ -z "$SKIP_LITEXL" ]; then
-      make install PREFIX=/usr/local || {
-        echo "Failed to install litexl" >&2
-        SKIP_LITEXL=1
-      }
-    fi
-  fi
-  cd /tmp
-  rm -rf litexl
-fi
+cargo install --git https://github.com/fishman/sleepwatcher-rs
 
 # Install qtfm
 if ! command -v qtfm >/dev/null 2>&1; then
