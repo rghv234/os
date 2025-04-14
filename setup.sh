@@ -24,7 +24,7 @@ apk update || {
 echo "Installing packages..."
 apk add --no-cache \
   labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock \
-  mupdf mako lite-xl image-roll drawing \
+  mupdf mako lite-xl image-roll drawing font-roboto wofi \
   greetd cage dbus polkit \
   tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
@@ -41,7 +41,7 @@ apk add --no-cache \
 
 # Define runtime dependencies to protect during cleanup
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
-  drawing greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
+  drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
   bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol"
@@ -111,7 +111,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_INSTALL_DOCDIR=share/doc/qtfm \
-    -DCMAKE_INSTALL_MANDIR=share/man \
+    -CMAKE_INSTALL_MANDIR=share/man \
     -DENABLE_MAGICK=true \
     -DENABLE_FFMPEG=true \
     -DENABLE_DBUS=true \
@@ -137,7 +137,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
   rm -rf qtfm
 fi
 
-# Install Orchis GTK theme and wallpaper
+# Install Orchis GTK theme (dark and light) and wallpaper
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis
 cd /tmp/orchis
@@ -151,7 +151,7 @@ cd Orchis-theme || {
   echo "Error: Orchis GTK repo clone failed." >&2
   exit 1
 }
-./install.sh -d "$USER_HOME/.themes" -t default -c dark -s compact --tweaks primary || {
+./install.sh -d "$USER_HOME/.themes" -t default -c dark light -s compact --tweaks primary || {
   echo "Warning: Orchis GTK theme installation failed." >&2
   SKIP_ORCHIS_GTK=1
 }
@@ -259,7 +259,7 @@ cat > /etc/greetd/config.toml << EOL
 vt = "next"
 switch = true
 [default_session]
-command = "cage -s -- wbg /usr/share/backgrounds/orchis-wallpaper.jpg -- gtkgreet"
+command = "cage -s -- env GTK_THEME=Orchis-Dark gtkgreet --style /etc/greetd/gtkgreet.css"
 user = "greetd"
 EOL
 cat > /etc/greetd/environments << EOL
@@ -269,11 +269,14 @@ addgroup greetd video 2>/dev/null || true
 addgroup greetd seat 2>/dev/null || true
 addgroup greetd input 2>/dev/null || true
 addgroup greetd bluetooth 2>/dev/null || true
-# Ensure gtkgreet uses Orchis theme
+# Ensure gtkgreet uses Orchis themes
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   mkdir -p /usr/share/themes
   cp -r "$USER_HOME/.themes/Orchis-Dark" /usr/share/themes/ || {
-    echo "Warning: Failed to copy Orchis theme for gtkgreet." >&2
+    echo "Warning: Failed to copy Orchis-Dark theme for gtkgreet." >&2
+  }
+  cp -r "$USER_HOME/.themes/Orchis-Light" /usr/share/themes/ || {
+    echo "Warning: Failed to copy Orchis-Light theme for gtkgreet." >&2
   }
 fi
 
@@ -310,7 +313,7 @@ else
 fi
 
 echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
-mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct} || {
+mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct,wofi} || {
   echo "Failed to create config directories" >&2
   exit 1
 }
@@ -363,7 +366,10 @@ if [ -z "$SKIP_ORCHIS_GTK" ]; then
 [Settings]
 gtk-theme-name=Orchis-Dark
 gtk-icon-theme-name=Papirus-Dark
-gtk-font-name=Sans 10
+gtk-font-name=Roboto 10
+gtk-application-prefer-dark-theme=true
+gtk-button-images=true
+gtk-menu-images=true
 EOL
   ln -sf "$USER_HOME/.themes/Orchis-Dark/gtk-4.0" "$USER_HOME/.config/gtk-4.0" || {
     echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
@@ -377,13 +383,80 @@ if [ -z "$SKIP_ORCHIS_KDE" ]; then
 style=fusion
 color_scheme=OrchisDark
 icon_theme=Papirus-Dark
+custom_palette=true
+[Palette]
+active-highlight=#8AB4F8
+active-button=#3C4043
+active-window=#202124
 EOL
 fi
+
+# Configure gtkgreet
+cat > /etc/greetd/gtkgreet.css << EOL
+window {
+  background: rgba(48,49,52,0.9);
+  backdrop-filter: blur(4px);
+}
+
+#box {
+  background: #202124;
+  border-radius: 8px;
+  padding: 16px;
+  margin: auto;
+  width: 400px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+#entry, #combo {
+  background: #3C4043;
+  color: #FFFFFF;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px;
+}
+
+#button {
+  background: #3C4043;
+  color: #FFFFFF;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+#button:hover {
+  background: #8AB4F8;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+EOL
+cat > /etc/greetd/config.toml << EOL
+[terminal]
+vt = "next"
+switch = true
+[default_session]
+command = "cage -s -- env GTK_THEME=Orchis-Dark gtkgreet --style /etc/greetd/gtkgreet.css"
+user = "greetd"
+EOL
 
 # Configure labwc
 cat > "$USER_HOME/.config/labwc/rc.xml" << EOL
 <?xml version="1.0"?>
 <openbox_config xmlns="http://openbox.org/3.4/rc">
+  <theme>
+    <cornerRadius>4</cornerRadius>
+    <titleLayout>#202124</titleLayout>
+    <shadow>true</shadow>
+  </theme>
+  <keyboard>
+    <keybind key="Super-d">
+      <action name="Execute"><execute>wofi --show drun</execute></action>
+    </keybind>
+    <keybind key="Super-t">
+      <action name="Execute"><execute>/usr/local/bin/toggle-theme.sh</execute></action>
+    </keybind>
+  </keyboard>
+  <animations>
+    <fadeWindows>true</fadeWindows>
+    <fadeMenus>true</fadeMenus>
+  </animations>
 </openbox_config>
 EOL
 cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
@@ -401,6 +474,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="Bluetooth"><action name="Execute"><execute>blueman-manager</execute></action></item>
     <item label="Audio"><action name="Execute"><execute>pavucontrol</execute></action></item>
     <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
+    <item label="Toggle Theme"><action name="Execute"><execute>/usr/local/bin/toggle-theme.sh</execute></action></item>
     <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
 </openbox_menu>
@@ -419,19 +493,326 @@ EOL
 
 # Configure sfwbar
 cat > "$USER_HOME/.config/sfwbar/sfwbar.config" << EOL
-[battery]
+[bar]
+location = bottom
+height = 48
+auto_hide = true
+exclusive = true
+css = "sfwbar.css"
+modules_left = Launcher TaskBar
+modules_right = Network Volume Bluetooth Battery Clock Tray
+
+[Launcher]
+icon = start-here
+exec = wofi --show drun
+
+[TaskBar]
+icon_size = 32
+pins = foot badwolf qtfm smplayer drawing mupdf blueman-manager pavucontrol
+
+[Network]
 interval = 10
-[cpu]
+show_icon = true
+exec = /usr/local/bin/wifi-popup.sh
+action = /usr/local/bin/wifi-toggle.sh
+
+[Volume]
+interval = 5
+show_icon = true
+exec = /usr/local/bin/volume-popup.sh
+action = /usr/local/bin/volume-toggle.sh
+
+[Bluetooth]
 interval = 10
-[clock]
+show_icon = true
+exec = /usr/local/bin/bluetooth-popup.sh
+action = /usr/local/bin/bluetooth-toggle.sh
+
+[Battery]
+interval = 30
+show_icon = true
+show_percentage = true
+
+[Clock]
 interval = 60
+format = %H:%M
+
+[Tray]
+icon_size = 24
+EOL
+
+cat > "$USER_HOME/.config/sfwbar/sfwbar.css" << EOL
+* {
+  font: Roboto 12;
+  color: #FFFFFF;
+}
+
+bar {
+  background: rgba(32,33,36,0.7);
+  border-radius: 4px;
+  padding: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+taskbar button {
+  padding: 8px;
+  margin: 0 4px;
+}
+
+taskbar button:hover {
+  background: #8AB4F8;
+  border-radius: 4px;
+  transition: all 0.1s ease;
+}
+
+taskbar button:active {
+  transform: scale(1.1);
+}
+
+taskbar button image {
+  -gtk-icon-transform: scale(1);
+}
+
+tray {
+  padding: 8px;
+}
+
+tray image {
+  -gtk-icon-transform: scale(1);
+}
+
+battery, network, volume, bluetooth, clock {
+  padding: 8px;
+  font: Roboto 10;
+}
+
+popup {
+  background: rgba(48,49,52,0.9);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: all 0.2s ease;
+}
+
+popup button {
+  background: #3C4043;
+  color: #FFFFFF;
+  border-radius: 16px;
+  padding: 8px;
+  margin: 4px;
+}
+
+popup button:hover {
+  background: #8AB4F8;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+popup scale trough {
+  background: #3C4043;
+  border-radius: 16px;
+}
+
+popup scale highlight {
+  background: #8AB4F8;
+  border-radius: 16px;
+}
+
+popup scale slider {
+  background: #FFFFFF;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+EOL
+
+# Configure sfwbar control scripts
+cat > /usr/local/bin/wifi-popup.sh << EOL
+#!/bin/sh
+# List Wi-Fi networks
+networks=\$(iwctl station wlan0 scan && iwctl station wlan0 get-networks | grep -v "open" | awk 'NR>4 {print \$1}')
+echo "popup {"
+echo "  label { text = 'Wi-Fi Networks'; font = 'Roboto 12'; color = '#FFFFFF'; }"
+for net in \$networks; do
+  echo "  button { text = '\$net'; exec = 'iwctl station wlan0 connect \"\$net\"'; }"
+done
+echo "}"
+EOL
+chmod +x /usr/local/bin/wifi-popup.sh
+
+cat > /usr/local/bin/wifi-toggle.sh << EOL
+#!/bin/sh
+if iwctl station wlan0 show | grep -q "connected"; then
+  iwctl station wlan0 disconnect
+else
+  iwctl station wlan0 scan
+fi
+EOL
+chmod +x /usr/local/bin/wifi-toggle.sh
+
+cat > /usr/local/bin/volume-popup.sh << EOL
+#!/bin/sh
+# Volume slider
+volume=\$(amixer get Master | grep -o "[0-9]*%" | head -1 | tr -d '%')
+echo "popup {"
+echo "  label { text = 'Volume'; font = 'Roboto 12'; color = '#FFFFFF'; }"
+echo "  scale { min = 0; max = 100; value = \$volume; exec = 'amixer set Master %d%%'; }"
+echo "}"
+EOL
+chmod +x /usr/local/bin/volume-popup.sh
+
+cat > /usr/local/bin/volume-toggle.sh << EOL
+#!/bin/sh
+if amixer get Master | grep -q "\[on\]"; then
+  amixer set Master mute
+else
+  amixer set Master unmute
+fi
+EOL
+chmod +x /usr/local/bin/volume-toggle.sh
+
+cat > /usr/local/bin/bluetooth-popup.sh << EOL
+#!/bin/sh
+# List Bluetooth devices
+devices=\$(bluetoothctl devices | awk '{print \$2, \$3}')
+echo "popup {"
+echo "  label { text = 'Bluetooth Devices'; font = 'Roboto 12'; color = '#FFFFFF'; }"
+if [ -n "\$devices" ]; then
+  while read -r mac name; do
+    echo "  button { text = '\$name'; exec = 'bluetoothctl connect \$mac'; }"
+  done <<< "\$devices"
+else
+  echo "  label { text = 'No devices found'; font = 'Roboto 10'; color = '#FFFFFF'; }"
+fi
+echo "}"
+EOL
+chmod +x /usr/local/bin/bluetooth-popup.sh
+
+cat > /usr/local/bin/bluetooth-toggle.sh << EOL
+#!/bin/sh
+if bluetoothctl show | grep -q "Powered: yes"; then
+  bluetoothctl power off
+else
+  bluetoothctl power on
+fi
+EOL
+chmod +x /usr/local/bin/bluetooth-toggle.sh
+
+# Configure light/dark mode toggle
+cat > /usr/local/bin/toggle-theme.sh << EOL
+#!/bin/sh
+CONFIG="$USER_HOME/.config/gtk-3.0/settings.ini"
+QTCONFIG="$USER_HOME/.config/qt5ct/qt5ct.conf"
+SFWBAR_CSS="$USER_HOME/.config/sfwbar/sfwbar.css"
+WOFI_CSS="$USER_HOME/.config/wofi/style.css"
+MAKO_CONFIG="$USER_HOME/.config/mako/config"
+FOOT_CONFIG="$USER_HOME/.config/foot/foot.ini"
+if grep -q "gtk-theme-name=Orchis-Dark" "\$CONFIG"; then
+  # Switch to light
+  sed -i 's/gtk-theme-name=Orchis-Dark/gtk-theme-name=Orchis-Light/' "\$CONFIG"
+  sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "\$CONFIG"
+  sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "\$CONFIG"
+  sed -i 's/color_scheme=OrchisDark/color_scheme=OrchisLight/' "\$QTCONFIG"
+  sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "\$QTCONFIG"
+  sed -i 's/active-window=#202124/active-window=#F1F3F4/' "\$QTCONFIG"
+  sed -i 's/background: rgba(32,33,36,0.7);/background: rgba(241,243,244,0.7);/' "\$SFWBAR_CSS"
+  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "\$SFWBAR_CSS" # popup
+  sed -i 's/color: #FFFFFF;/color: #202124;/' "\$SFWBAR_CSS"
+  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "\$WOFI_CSS"
+  sed -i 's/color: #FFFFFF;/color: #202124;/' "\$WOFI_CSS"
+  sed -i 's/background: #3C4043;/background: #E8EAED;/' "\$WOFI_CSS" # search bar
+  sed -i 's/background-color=#303134/background-color=#FFFFFF/' "\$MAKO_CONFIG"
+  sed -i 's/text-color=#FFFFFF/text-color=#202124/' "\$MAKO_CONFIG"
+  sed -i 's/border-color=#3C4043/border-color=#E8EAED/' "\$MAKO_CONFIG"
+  sed -i 's/background=303134/background=F1F3F4/' "\$FOOT_CONFIG"
+  sed -i 's/foreground=FFFFFF/foreground=202124/' "\$FOOT_CONFIG"
+else
+  # Switch to dark
+  sed -i 's/gtk-theme-name=Orchis-Light/gtk-theme-name=Orchis-Dark/' "\$CONFIG"
+  sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "\$CONFIG"
+  sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "\$CONFIG"
+  sed -i 's/color_scheme=OrchisLight/color_scheme=OrchisDark/' "\$QTCONFIG"
+  sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "\$QTCONFIG"
+  sed -i 's/active-window=#F1F3F4/active-window=#202124/' "\$QTCONFIG"
+  sed -i 's/background: rgba(241,243,244,0.7);/background: rgba(32,33,36,0.7);/' "\$SFWBAR_CSS"
+  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "\$SFWBAR_CSS" # popup
+  sed -i 's/color: #202124;/color: #FFFFFF;/' "\$SFWBAR_CSS"
+  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "\$WOFI_CSS"
+  sed -i 's/color: #202124;/color: #FFFFFF;/' "\$WOFI_CSS"
+  sed -i 's/background: #E8EAED;/background: #3C4043;/' "\$WOFI_CSS" # search bar
+  sed -i 's/background-color=#FFFFFF/background-color=#303134/' "\$MAKO_CONFIG"
+  sed -i 's/text-color=#202124/text-color=#FFFFFF/' "\$MAKO_CONFIG"
+  sed -i 's/border-color=#E8EAED/border-color=#3C4043/' "\$MAKO_CONFIG"
+  sed -i 's/background=F1F3F4/background=303134/' "\$FOOT_CONFIG"
+  sed -i 's/foreground=202124/foreground=FFFFFF/' "\$FOOT_CONFIG"
+fi
+# Reload configs
+pkill -u "$USER_NAME" -USR1 sfwbar
+pkill -u "$USER_NAME" -USR1 mako
+EOL
+chmod +x /usr/local/bin/toggle-theme.sh
+
+# Configure wofi
+cat > "$USER_HOME/.config/wofi/config" << EOL
+width=400
+height=600
+columns=4
+icon_size=48
+show=drun
+matching=fuzzy
+EOL
+
+cat > "$USER_HOME/.config/wofi/style.css" << EOL
+* {
+  font-family: Roboto;
+  font-size: 12pt;
+  color: #FFFFFF;
+}
+
+window {
+  background: rgba(48,49,52,0.9);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+window:ready {
+  opacity: 1;
+}
+
+#outer-box {
+  padding: 8px;
+}
+
+#input {
+  background: #3C4043;
+  color: #FFFFFF;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+#entry {
+  background: #202124;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+#entry:selected {
+  background: #8AB4F8;
+  border-radius: 4px;
+}
 EOL
 
 # Configure foot
 cat > "$USER_HOME/.config/foot/foot.ini" << EOL
 [colors]
-background=1d2021
-foreground=d5c4a1
+background=303134
+foreground=FFFFFF
 EOL
 
 # Configure qtfm
@@ -443,9 +824,16 @@ fi
 
 # Configure mako
 cat > "$USER_HOME/.config/mako/config" << EOL
-background-color=#1d2021
-text-color=#d5c4a1
-border-color=#32302f
+background-color=#303134
+text-color=#FFFFFF
+border-color=#3C4043
+border-radius=8
+font=Roboto 12
+padding=8
+margin=8
+default-timeout=5000
+action-color=#8AB4F8
+box-shadow=0 2px 4px rgba(0,0,0,0.2)
 EOL
 
 # Configure clipman
@@ -611,29 +999,36 @@ fi
 
 # Verification
 echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management."
+echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management. Styled like ChromeOS Flex with Material You and Fluent UI: gtkgreet login, sfwbar shelf, wofi start menu, Wi-Fi/sound/Bluetooth controls, Orchis-Dark/Light (GTK/Qt), Papirus-Dark/Light icons."
 echo "To verify:"
-echo "1. Reboot and login via gtkgreet (labwc session, check Orchis-Dark theme and Orchis wallpaper)."
-echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme, latest version)."
-echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from menu (Orchis-Dark GTK theme)."
-echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use pavucontrol to select Bluetooth output (Orchis-Dark GTK theme)."
-echo "5. Test qtfm: open qtfm, verify image/video thumbnails and OrchisDark Qt theme (latest version)."
+echo "1. Reboot and login via gtkgreet (labwc session, Orchis-Dark, blurred Orchis wallpaper, #202124 box with shadow, #3C4043 fields, #8AB4F8 button hover, acrylic blur)."
+echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme, #8AB4F8 buttons, Papirus-Dark icons, latest version)."
+echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from wofi (Orchis-Dark, #8AB4F8 buttons, Papirus-Dark)."
+echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use pavucontrol to select Bluetooth output (Orchis-Dark, #8AB4F8 buttons, Papirus-Dark)."
+echo "5. Test qtfm: open qtfm, verify image/video thumbnails, OrchisDark Qt theme, #8AB4F8 buttons, Papirus-Dark icons (latest version)."
 echo "6. Test clipboard: copy text, run 'wl-paste' to verify (wl-clipboard)."
-echo "7. Test screenshot: select 'Screenshot' from menu, check ~/screenshot-*.png."
-echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark GTK theme)."
-echo "9. Test drawing: select 'Drawing' from menu, draw a shape, save as PNG, verify Orchis-Dark theme and Papirus icons."
-echo "10. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
-echo "11. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
-echo "12. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
-echo "13. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
-echo "14. Compare to ChromeOS Flex (expect 10-20% better battery)."
-echo "15. Check elogind/TLP coordination: systemctl status tlp (if running)."
-echo "16. Check themes: qtfm/smplayer should use OrchisDark Qt theme (fusion style), gtkgreet/sfwbar/badwolf/image-roll/blueman/pavucontrol/drawing should use Orchis-Dark GTK theme, all apps should use Papirus-Dark icons."
-echo "17. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "18. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
-echo "19. Check Wayland: Run 'wayland-info' to verify compositor details."
-echo "20. Check source versions: smplayer, qtfm, Orchis themes should be latest tagged releases."
-echo "21. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "7. Test screenshot: select 'Screenshot' from wofi, check ~/screenshot-*.png."
+echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark, #8AB4F8 buttons, Papirus-Dark)."
+echo "9. Test drawing: select 'Drawing' from wofi, draw a shape, save as PNG, verify Orchis-Dark, Papirus-Dark, #8AB4F8 buttons."
+echo "10. Test sfwbar shelf: Verify bottom bar, dark #202124 (light #F1F3F4), 70% opacity, 4px corners, shadow, autohide, pinned apps (foot, badwolf, qtfm, smplayer, drawing, mupdf, blueman, pavucontrol), tray with Wi-Fi/volume/Bluetooth/battery/clock, #8AB4F8 hover, Papirus-Dark/Light icons."
+echo "11. Test wofi launcher: Click sfwbar launcher or press Super+D, verify 400x600px, dark #303134 (light #FFFFFF), 90% opacity, 8px corners, acrylic blur, shadow, 4x4 app grid with shadows, Roboto 12pt, Papirus-Dark/Light 48x48px icons, #3C4043/#E8EAED search bar, #8AB4F8 hover, fade-in animation."
+echo "12. Test wofi search: Type in wofi, verify instant app filtering."
+echo "13. Test sfwbar controls: Click Wi-Fi/volume/Bluetooth tray icons, verify popups (#303134 dark, #FFFFFF light, 90%, 8px corners, acrylic blur, shadow, #8AB4F8 rounded toggles/sliders, Roboto 10pt, Papirus-Dark/Light)."
+echo "14. Test notifications: Trigger via 'notify-send test', verify dark #303134 (light #FFFFFF), white/black text, 8px corners, acrylic blur, shadow, Roboto 12pt, #8AB4F8 actions."
+echo "15. Test light/dark mode: Press Super+T or select 'Toggle Theme' from wofi, verify switch between Orchis-Dark (#303134, #202124) and Orchis-Light (#F1F3F4, #FFFFFF) for GTK/Qt apps, Papirus-Dark ↔ Papirus-Light icons, updates gtkgreet, wofi, sfwbar, mako, foot."
+echo "16. Test window styling: Open foot/badwolf/qtfm, verify labwc titlebars (#202124 dark, #F1F3F4 light, 4px corners, shadow), fade animations."
+echo "17. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
+echo "18. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
+echo "19. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
+echo "20. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
+echo "21. Compare to ChromeOS Flex (expect 10-20% better battery)."
+echo "22. Check elogind/TLP coordination: systemctl status tlp (if running)."
+echo "23. Check themes: qtfm/smplayer use OrchisDark/Light Qt theme (fusion, #8AB4F8 buttons), gtkgreet/wofi/badwolf/image-roll/blueman/pavucontrol/drawing use Orchis-Dark/Light GTK theme (#8AB4F8 buttons), all apps use Papirus-Dark/Light icons."
+echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet (blurred)."
+echo "25. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
+echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
+echo "27. Check source versions: smplayer, qtfm, Orchis themes should be latest tagged releases."
+echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "======================================================================"
 
 exit 0
