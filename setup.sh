@@ -462,9 +462,9 @@ EOL
     exit 1
   }
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
-fi  
+fi  # This 'fi' closes the if-else block
 
-# Configure GTK theme
+# Configure GTK theme (continues after the if block)
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   mkdir -p "$USER_HOME/.config/gtk-3.0"  # Ensure directory exists
   cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
