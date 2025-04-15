@@ -29,7 +29,7 @@ apk add --no-cache \
   mupdf mako lite-xl image-roll drawing font-roboto wofi \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
-  clipman grim slurp xdg-desktop-portal-wlr qt5ct papirus-icon-theme \
+  clipman grim slurp xdg-desktop-portal-wlr qt5ct qt6ct papirus-icon-theme \
   bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
   xdotool bash celluloid \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
@@ -58,24 +58,42 @@ cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
 # Install qtfm
 if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
-  mkdir -p /tmp/qtfm && cd /tmp/qtfm
+  mkdir -p /tmp/qtfm
+  cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
-  [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" || { echo "Error: qtfm clone failed" >&2; exit 1; }
+  if [ -z "$QTFM_TAG" ]; then
+    QTFM_TAG="main"
+    echo "Warning: Could not fetch qtfm tag, falling back to main" >&2
+  fi
+  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch || {
+    echo "Error: qtfm repo clone failed." >&2
+    exit 1
+  }
   cd qtfm
-  # Prefer CMake to avoid qmake dependency issues
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
-    echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
-    QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
-    $QMAKE_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
-      echo "Error: qtfm qmake configuration failed" >&2
-      SKIP_QTFM=1
-    }
+  # Use qmake-qt6 if available, else fallback to qmake
+  if ! command -v qmake-qt6 >/dev/null 2>&1; then
+    QMAKE_CMD=qmake
+  else
+    QMAKE_CMD=qmake-qt6
+  fi
+  $QMAKE_CMD PREFIX=/usr || {
+    echo "Warning: qtfm qmake configuration failed." >&2
+    SKIP_QTFM=1
   }
   if [ -z "$SKIP_QTFM" ]; then
-    make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; }
+    make || {
+      echo "Warning: qtfm build failed." >&2
+      SKIP_QTFM=1
+    }
+    if [ -z "$SKIP_QTFM" ]; then
+      make install || {
+        echo "Failed to install qtfm" >&2
+        SKIP_QTFM=1
+      }
+    fi
   fi
-  cd /tmp && rm -rf qtfm
+  cd /tmp
+  rm -rf qtfm
 fi
 
 # Install Orchis GTK theme and wallpaper
