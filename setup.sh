@@ -10,46 +10,33 @@ SKIP_ORCHIS_GTK=""
 SKIP_WALLPAPER=""
 SKIP_ORCHIS_KDE=""
 SKIP_VIMIX=""
-SKIP_QT6CT=""
 
 # Ensure root
-if [ "$(id -u)" != "0" ]; then
-   echo "This script must be run as root" >&2
-   exit 1
-fi
+[ "$(id -u)" != "0" ] && { echo "This script must be run as root" >&2; exit 1; }
 
 # Set edge repositories
-tee /etc/apk/repositories << EOL
+cat > /etc/apk/repositories << EOL
 http://dl-cdn.alpinelinux.org/alpine/edge/main
 http://dl-cdn.alpinelinux.org/alpine/edge/community
 http://dl-cdn.alpinelinux.org/alpine/edge/testing
 EOL
-apk update || {
-  echo "Failed to update package repositories" >&2
-  exit 1
-}
+apk update || { echo "Failed to update package repositories" >&2; exit 1; }
 
 # Install packages
 echo "Installing packages..."
 apk add --no-cache \
   labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock \
   mupdf mako lite-xl image-roll drawing font-roboto wofi \
-  greetd cage dbus polkit \
-  tlp elogind wlr-randr upower iw util-linux udev \
+  greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
+  clipman grim slurp xdg-desktop-portal-wlr qt5ct papirus-icon-theme \
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
+  xdotool bash celluloid \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png \
-  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
-  clipman grim slurp xdg-desktop-portal-wlr \
-  sassc qt5ct papirus-icon-theme \
-  bluez bluez-openrc blueman linux-firmware \
-  mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
-  xdotool qt6-qtsvg-dev qt6-qt5compat-dev bash celluloid || {
-  echo "Failed to install required packages" >&2
-  exit 1
-}
+  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
+  sassc qt6-qtsvg-dev qt6-qt5compat-dev || { echo "Failed to install packages" >&2; exit 1; }
 
-# Define runtime dependencies to protect during cleanup
+# Define runtime dependencies
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
@@ -58,196 +45,102 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
 
 # Function to get latest git tag
 get_latest_tag() {
-  repo_url="$1"
-  git ls-remote --tags "$repo_url" | grep -v "{}" | grep -v "release-" | \
-    sed 's|.*/||' | sort -V | tail -1 || echo ""
+  git ls-remote --tags "$1" | grep -v "{}" | grep -v "release-" | sed 's|.*/||' | sort -V | tail -1
 }
 
 # Install wlsleephandler-rs
 echo "Installing wlsleephandler-rs..."
 cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
-  echo "Warning: wlsleephandler-rs installation failed. Using fallback." >&2
+  echo "Warning: wlsleephandler-rs installation failed" >&2
   SKIP_WLSLEEPHANDLER=1
 }
 
-# Install qtfm (Qt6 compatible)
+# Install qtfm
 if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
-  mkdir -p /tmp/qtfm
-  cd /tmp/qtfm
+  mkdir -p /tmp/qtfm && cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
-  if [ -z "$QTFM_TAG" ]; then
-    QTFM_TAG="main"
-    echo "Warning: Could not fetch qtfm tag, falling back to main" >&2
-  fi
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch || {
-    echo "Error: qtfm repo clone failed." >&2
-    exit 1
-  }
+  [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
+  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" || { echo "Error: qtfm clone failed" >&2; exit 1; }
   cd qtfm
-  if ! command -v qmake-qt6 >/dev/null 2>&1; then
-    QMAKE_CMD=qmake
-  else
-    QMAKE_CMD=qmake-qt6
-  fi
-  $QMAKE_CMD PREFIX=/usr || {
-    echo "Warning: qtfm qmake configuration failed." >&2
-    SKIP_QTFM=1
-  }
-  if [ -z "$SKIP_QTFM" ]; then
-    make || {
-      echo "Warning: qtfm build failed." >&2
-      SKIP_QTFM=1
-    }
-    if [ -z "$SKIP_QTFM" ]; then
-      make install || {
-        echo "Failed to install qtfm" >&2
-        SKIP_QTFM=1
-      }
-    fi
-  fi
-  cd /tmp
-  rm -rf qtfm
+  QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
+  $QMAKE_CMD PREFIX=/usr && make && make install || { echo "Warning: qtfm build/install failed" >&2; SKIP_QTFM=1; }
+  cd /tmp && rm -rf qtfm
 fi
 
 # Install Orchis GTK theme and wallpaper
 echo "Installing Orchis GTK theme and wallpaper..."
-mkdir -p /tmp/orchis
-cd /tmp/orchis
-git clone --branch master https://github.com/vinceliuice/Orchis-theme.git || {
-  echo "Error: Orchis GTK repo clone failed." >&2
-  exit 1
-}
+mkdir -p /tmp/orchis && cd /tmp/orchis
+git clone --branch master https://github.com/vinceliuice/Orchis-theme.git || { echo "Error: Orchis GTK clone failed" >&2; exit 1; }
 cd Orchis-theme
-mkdir -p /usr/share/themes
-if [ -d "src" ]; then
-  if [ -d "src/gtk-3.0" ]; then
-    cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ || {
-      echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme. Attempting fallback with install..." >&2
-      install -D -m 644 src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ || {
-        echo "Error: Fallback installation of Orchis-Dark GTK 3.0 theme failed." >&2
-        SKIP_ORCHIS_GTK=1
-      }
-    }
-  fi
-  if [ -d "src/gtk-4.0" ]; then
-    cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ || {
-      echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme. Attempting fallback with install..." >&2
-      install -D -m 644 src/gtk-4.0/* /usr/share/themes/Orchis-Dark/ || {
-        echo "Error: Fallback installation of Orchis-Dark GTK 4.0 theme failed." >&2
-        SKIP_ORCHIS_GTK=1
-      }
-    }
-  fi
-  [ -f "src/gtk-3.0/gtk.css" ] && sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css
-  [ -f "src/gtk-4.0/gtk.css" ] && sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css
-else
-  echo "Warning: src directory not found in Orchis-theme. Skipping theme installation." >&2
-  SKIP_ORCHIS_GTK=1
-fi
+mkdir -p /usr/share/themes/Orchis-Dark
+[ -d "src/gtk-3.0" ] && cp -r src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ || { echo "Warning: Orchis GTK 3.0 copy failed" >&2; SKIP_ORCHIS_GTK=1; }
+[ -d "src/gtk-4.0" ] && cp -r src/gtk-4.0/* /usr/share/themes/Orchis-Dark/ || { echo "Warning: Orchis GTK 4.0 copy failed" >&2; SKIP_ORCHIS_GTK=1; }
+[ -f "src/gtk-3.0/gtk.css" ] && sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css
+[ -f "src/gtk-4.0/gtk.css" ] && sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css
 for res in "1080p" "2k" "4k"; do
-  if [ -f "wallpaper/$res.jpg" ]; then
-    mkdir -p /usr/share/backgrounds
-    cp "wallpaper/$res.jpg" /usr/share/backgrounds/orchis-wallpaper.jpg || {
-      echo "Warning: Orchis wallpaper copy failed." >&2
-      SKIP_WALLPAPER=1
-    }
-    break
-  fi
+  [ -f "wallpaper/$res.jpg" ] && { mkdir -p /usr/share/backgrounds; cp "wallpaper/$res.jpg" /usr/share/backgrounds/orchis-wallpaper.jpg && break; }
 done
-if [ ! -f /usr/share/backgrounds/orchis-wallpaper.jpg ]; then
-  echo "Warning: No wallpaper found in Orchis theme, using fallback." >&2
+[ ! -f /usr/share/backgrounds/orchis-wallpaper.jpg ] && {
+  echo "Warning: Orchis wallpaper not found, using fallback" >&2
   mkdir -p /usr/share/backgrounds
   echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /usr/share/backgrounds/orchis-wallpaper.jpg
-fi
-cd /tmp
-rm -rf orchis
-
-# Install Orchis KDE theme for Qt applications
-echo "Installing Orchis KDE theme for Qt applications..."
-mkdir -p /tmp/orchis-kde
-cd /tmp/orchis-kde
-git clone --branch main https://github.com/vinceliuice/Orchis-kde.git || {
-  echo "Error: Orchis KDE repo clone failed." >&2
-  exit 1
 }
+cd /tmp && rm -rf orchis
+
+# Install Orchis KDE theme
+echo "Installing Orchis KDE theme..."
+mkdir -p /tmp/orchis-kde && cd /tmp/orchis-kde
+git clone --branch main https://github.com/vinceliuice/Orchis-kde.git || { echo "Error: Orchis KDE clone failed" >&2; exit 1; }
 cd Orchis-kde
 mkdir -p /usr/share/color-schemes
-if [ -f "color-schemes/OrchisDark.colors" ]; then
-  cp color-schemes/OrchisDark.colors /usr/share/color-schemes/ || {
-    echo "Warning: Failed to copy OrchisDark color scheme." >&2
-    SKIP_ORCHIS_KDE=1
-  }
-fi
-if [ -f "color-schemes/OrchisLight.colors" ]; then
-  cp color-schemes/OrchisLight.colors /usr/share/color-schemes/ || {
-    echo "Warning: Failed to copy OrchisLight color scheme." >&2
-    SKIP_ORCHIS_KDE=1
-  }
-fi
-cd /tmp
-rm -rf orchis-kde
+[ -f "color-schemes/OrchisDark.colors" ] && cp color-schemes/OrchisDark.colors /usr/share/color-schemes/ || { echo "Warning: OrchisDark copy failed" >&2; SKIP_ORCHIS_KDE=1; }
+[ -f "color-schemes/OrchisLight.colors" ] && cp color-schemes/OrchisLight.colors /usr/share/color-schemes/ || { echo "Warning: OrchisLight copy failed" >&2; SKIP_ORCHIS_KDE=1; }
+cd /tmp && rm -rf orchis-kde
 
 # Install Vimix cursor themes
 echo "Installing Vimix cursor themes..."
-mkdir -p /tmp/vimix-cursors
-cd /tmp/vimix-cursors
-git clone --branch master https://github.com/vinceliuice/Vimix-cursors.git || {
-  echo "Error: Vimix cursors repo clone failed." >&2
-  exit 1
-}
+mkdir -p /tmp/vimix-cursors && cd /tmp/vimix-cursors
+git clone --branch master https://github.com/vinceliuice/Vimix-cursors.git || { echo "Error: Vimix cursors clone failed" >&2; exit 1; }
 cd Vimix-cursors
 if [ -f "install.sh" ]; then
   /bin/bash install.sh || {
-    echo "Warning: Vimix cursors installation failed with install.sh. Attempting fallback..." >&2
+    echo "Warning: Vimix cursors install failed, attempting fallback" >&2
     mkdir -p /usr/share/icons
-    if [ -d "dist" ]; then
-      cp -r dist/* /usr/share/icons/ || {
-        echo "Warning: Fallback copy of dist failed. Attempting dist-white..." >&2
-      }
-    fi
-    if [ -d "dist-white" ]; then
-      cp -r dist-white/* /usr/share/icons/ || {
-        echo "Error: Fallback installation of Vimix cursors failed. Creating minimal cursor theme..." >&2
-        mkdir -p /usr/share/icons/Vimix-White
-        echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
-        SKIP_VIMIX=1
-      }
-    else
-      echo "Error: No dist or dist-white found. Creating minimal cursor theme..." >&2
+    [ -d "dist" ] && cp -r dist/* /usr/share/icons/ || true
+    [ -d "dist-white" ] && cp -r dist-white/* /usr/share/icons/ || {
+      echo "Error: Vimix cursors fallback failed" >&2
       mkdir -p /usr/share/icons/Vimix-White
       echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
       SKIP_VIMIX=1
-    fi
+    }
   }
 else
-  echo "Error: install.sh not found in Vimix-cursors. Creating minimal cursor theme..." >&2
+  echo "Error: Vimix install.sh not found" >&2
   mkdir -p /usr/share/icons/Vimix-White
   echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
   SKIP_VIMIX=1
 fi
-cd /tmp
-rm -rf vimix-cursors
+cd /tmp && rm -rf vimix-cursors
 
 # Configure Bluetooth
 echo "Configuring Bluetooth..."
-rc-update add bluetooth default || echo "Warning: Failed to add bluetooth to boot services" >&2
-tee /etc/bluetooth/main.conf << EOL
+rc-update add bluetooth default
+cat > /etc/bluetooth/main.conf << EOL
 [General]
-Name = AlpineWayland
-DiscoverableTimeout = 0
-AlwaysPairable = true
-AutoEnable = true
-
+Name=AlpineWayland
+DiscoverableTimeout=0
+AlwaysPairable=true
+AutoEnable=true
 [Policy]
-AutoEnable = true
+AutoEnable=true
 EOL
-echo "uinput" >> /etc/modules || echo "Warning: Failed to add uinput module" >&2
+echo "uinput" >> /etc/modules
 
 # Configure TLP
 echo "Configuring TLP..."
-rc-update add tlp default || echo "Warning: Failed to add TLP to boot services" >&2
-tee /etc/tlp.conf << EOL
+rc-update add tlp default
+cat > /etc/tlp.conf << EOL
 TLP_DEFAULT_MODE=BAT
 CPU_SCALING_GOVERNOR_ON_BAT=powersave
 CPU_SCALING_GOVERNOR_ON_AC=performance
@@ -265,67 +158,43 @@ SATA_LINKPWR_ON_BAT=min_power
 SATA_LINKPWR_ON_AC=max_performance
 SOUND_POWER_SAVE_ON_BAT=1
 SOUND_POWER_SAVE_ON_AC=0
-RESTORE_DEVICE_STATE_ON_STARTUP=0
 EOL
 
 # Configure sound
 echo "Configuring sound services..."
-if ! rc-service pipewire status >/dev/null 2>&1; then
-  if [ ! -f /etc/init.d/pipewire ]; then
-    echo "Creating pipewire service file..."
-    tee /etc/init.d/pipewire << EOL
+for svc in pipewire wireplumber; do
+  if ! rc-service $svc status >/dev/null 2>&1; then
+    cat > /etc/init.d/$svc << EOL
 #!/sbin/openrc-run
-description="PipeWire Multimedia Server"
-command=/usr/bin/pipewire
-command_args=""
+description="$svc Multimedia Service"
+command=/usr/bin/$svc
 command_background=true
-pidfile=/run/pipewire.pid
+pidfile=/run/$svc.pid
 depend() {
     need dbus
     after network-online
 }
 EOL
-    chmod +x /etc/init.d/pipewire
-    rc-update add pipewire default || echo "Warning: Failed to add pipewire to boot services" >&2
+    chmod +x /etc/init.d/$svc
+    rc-update add $svc default
+    rc-service $svc start || echo "Warning: Failed to start $svc" >&2
   fi
-  rc-service pipewire start || echo "Warning: Failed to start pipewire service" >&2
-fi
-if ! rc-service wireplumber status >/dev/null 2>&1; then
-  if [ ! -f /etc/init.d/wireplumber ]; then
-    echo "Creating wireplumber service file..."
-    tee /etc/init.d/wireplumber << EOL
-#!/sbin/openrc-run
-description="WirePlumber Multimedia Session Manager"
-command=/usr/bin/wireplumber
-command_args=""
-command_background=true
-pidfile=/run/wireplumber.pid
-depend() {
-    need pipewire
-    after pipewire
-}
-EOL
-    chmod +x /etc/init.d/wireplumber
-    rc-update add wireplumber default || echo "Warning: Failed to add wireplumber to boot services" >&2
-  fi
-  rc-service wireplumber start || echo "Warning: Failed to start wireplumber service" >&2
-fi
-rc-update add alsa default || echo "Warning: Failed to add alsa to boot services" >&2
+done
+rc-update add alsa default
 alsactl init
-tee /etc/asound.conf << EOL
-defaults.pcm.card 0
-defaults.ctl.card 0
-EOL
+echo "defaults.pcm.card 0\ndefaults.ctl.card 0" > /etc/asound.conf
 
-# Configure elogind, dbus, udev
+# Configure services
 echo "Configuring session services..."
-rc-update add elogind default || echo "Warning: Failed to add elogind to boot services" >&2
-rc-update add dbus default || echo "Warning: Failed to add dbus to boot services" >&2
-rc-update add udev default || echo "Warning: Failed to add udev to boot services" >&2
+for svc in elogind dbus udev greetd polkit local crond; do
+  rc-update add $svc default || echo "Warning: Failed to add $svc to boot services" >&2
+done
+rc-update add mdev sysinit
+rc-update add hwdrivers sysinit
 
-# Configure PAM for XDG_RUNTIME_DIR
-echo "Configuring PAM for XDG_RUNTIME_DIR..."
-tee /etc/pam.d/greetd << EOL
+# Configure PAM
+echo "Configuring PAM..."
+cat > /etc/pam.d/greetd << EOL
 auth       required   pam-rundir.so
 auth       required   pam_unix.so
 account    required   pam_unix.so
@@ -335,10 +204,9 @@ session    required   pam_env.so
 session    required   pam_unix.so
 EOL
 
-# Configure greetd and gtkgreet
-echo "Configuring greetd login manager..."
-rc-update add greetd default || echo "Warning: Failed to add greetd to boot services" >&2
-tee /etc/greetd/config.toml << EOL
+# Configure greetd
+echo "Configuring greetd..."
+cat > /etc/greetd/config.toml << EOL
 [terminal]
 vt = "next"
 switch = true
@@ -346,93 +214,53 @@ switch = true
 command = "cage -s -- env GTK_THEME=Orchis-Dark XCURSOR_THEME=Vimix-White gtkgreet --style /etc/greetd/gtkgreet.css"
 user = "greetd"
 EOL
-tee /etc/greetd/environments << EOL
-dbus-run-session -- labwc
-EOL
-addgroup greetd video || true
-addgroup greetd seat || true
-addgroup greetd input || true
-addgroup greetd bluetooth || true
-if [ -z "$SKIP_ORCHIS_GTK" ] && [ -d "/usr/share/themes/Orchis-Dark" ]; then
-  cp -r /usr/share/themes/Orchis-Dark /usr/share/themes/ || {
-    echo "Warning: Failed to copy Orchis-Dark theme for gtkgreet." >&2
-  }
-  if [ -d "/usr/share/themes/Orchis-Light" ]; then
-    cp -r /usr/share/themes/Orchis-Light /usr/share/themes/ || {
-      echo "Warning: Failed to copy Orchis-Light theme for gtkgreet." >&2
-    }
-  fi
-fi
+echo "dbus-run-session -- labwc" > /etc/greetd/environments
+for group in video seat input bluetooth; do addgroup greetd $group || true; done
 
-# User configuration
+# User setup
 echo "User configuration..."
 USER_NAME="user"
 USER_HOME="/home/$USER_NAME"
 if ! id "$USER_NAME" >/dev/null 2>&1; then
-  echo "Creating default user '$USER_NAME'..."
-  adduser -D "$USER_NAME" || {
-    echo "Failed to create user" >&2
-    exit 1
-  }
+  adduser -D "$USER_NAME" || { echo "Failed to create user" >&2; exit 1; }
 fi
-if [ ! -d "$USER_HOME" ]; then
-  mkdir -p "$USER_HOME" || {
-    echo "Failed to create home directory" >&2
-    exit 1
-  }
-  chown "$USER_NAME:$USER_NAME" "$USER_HOME"
-fi
-echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
-mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct,wofi} || {
-  echo "Failed to create config directories" >&2
-  exit 1
-}
-addgroup "$USER_NAME" audio || true
-addgroup "$USER_NAME" bluetooth || true
-addgroup "$USER_NAME" pipewire || true
+mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct,wofi}
+chown -R "$USER_NAME:$USER_NAME" "$USER_HOME"
+for group in audio bluetooth pipewire; do addgroup "$USER_NAME" $group || true; done
 
 # Configure wlsleephandler-rs or fallback
 if [ -z "$SKIP_WLSLEEPHANDLER" ] && command -v wlsleephandler-rs >/dev/null 2>&1; then
   echo "Configuring wlsleephandler-rs..."
-  tee "$USER_HOME/.config/wlsleephandler-rs/config.toml" << EOL
+  cat > "$USER_HOME/.config/wlsleephandler-rs/config.toml" << EOL
 [suspend]
 idle_timeout = 300
 command = "loginctl suspend"
-
 [lock]
 idle_timeout = 120
 command = "waylock -fork-on-lock"
 EOL
   AUTOSTART="dbus-run-session -- wlsleephandler-rs &"
 else
-  echo "Configuring fallback idle suspend script..."
-  tee /usr/local/bin/idle-suspend.sh << EOL
+  echo "Configuring fallback idle suspend..."
+  cat > /usr/local/bin/idle-suspend.sh << EOL
 #!/bin/sh
-check_idle() {
-  idle_hint=$(loginctl show-session -p IdleHint 2>/dev/null || echo "IdleHint=no")
-  if echo "$idle_hint" | grep -q "IdleHint=yes"; then
-    echo "System is idle, locking and suspending..."
+while true; do
+  if loginctl show-session -p IdleHint 2>/dev/null | grep -q "IdleHint=yes"; then
     waylock -fork-on-lock
     loginctl suspend
     sleep 10
   fi
-}
-check_idle
-while true; do
   sleep 60
-  check_idle
 done
 EOL
-  chmod +x /usr/local/bin/idle-suspend.sh || {
-    echo "Failed to make idle-suspend.sh executable" >&2
-    exit 1
-  }
+  chmod +x /usr/local/bin/idle-suspend.sh
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
 fi
 
 # Configure GTK theme
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
-  tee "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
+  for ver in 3.0 4.0; do
+    cat > "$USER_HOME/.config/gtk-$ver/settings.ini" << EOL
 [Settings]
 gtk-theme-name=Orchis-Dark
 gtk-icon-theme-name=Papirus-Dark
@@ -442,26 +270,14 @@ gtk-application-prefer-dark-theme=true
 gtk-button-images=true
 gtk-menu-images=true
 EOL
-  tee "$USER_HOME/.config/gtk-4.0/settings.ini" << EOL
-[Settings]
-gtk-theme-name=Orchis-Dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-cursor-theme-name=Vimix-White
-gtk-font-name=Roboto 10
-gtk-application-prefer-dark-theme=true
-gtk-button-images=true
-gtk-menu-images=true
-EOL
-  ln -sf /usr/share/themes/Orchis-Dark/gtk-4.0 "$USER_HOME/.config/gtk-4.0" || {
-    echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
-  }
+  done
+  ln -sf /usr/share/themes/Orchis-Dark/gtk-4.0 "$USER_HOME/.config/gtk-4.0"
 fi
 
-# Configure Qt theme for qt6ct
-if [ -z "$SKIP_ORCHIS_KDE" ]; then
-  if command -v qt6ct >/dev/null 2>&1; then
-    mkdir -p "$USER_HOME/.config/qt6ct"
-    tee "$USER_HOME/.config/qt6ct/qt6ct.conf" << EOL
+# Configure Qt theme
+if [ -z "$SKIP_ORCHIS_KDE" ] && command -v qt6ct >/dev/null 2>&1; then
+  mkdir -p "$USER_HOME/.config/qt6ct"
+  cat > "$USER_HOME/.config/qt6ct/qt6ct.conf" << EOL
 [Appearance]
 style=fusion
 color_scheme_path=/usr/share/color-schemes/OrchisDark.colors
@@ -472,24 +288,16 @@ active-highlight=#8AB4F8
 active-button=#3C4043
 active-window=#202124
 EOL
-  else
-    SKIP_QT6CT=1
-  fi
-  echo "export QT_STYLE_OVERRIDE=fusion" >> "$USER_HOME/.profile"
-  if [ -z "$SKIP_QT6CT" ]; then
-    echo "export QT_QPA_PLATFORMTHEME=qt6ct" >> "$USER_HOME/.config/labwc/environment"
-  fi
-  echo "export QT_QPA_PLATFORMTHEME=\${QT_QPA_PLATFORMTHEME:-}" >> "$USER_HOME/.profile"
-  echo "Note: Set QT_QPA_PLATFORMTHEME=qt6ct for Qt 6 apps (e.g., qtfm) if qt6ct is installed." >&2
+  echo "export QT_QPA_PLATFORMTHEME=qt6ct" >> "$USER_HOME/.config/labwc/environment"
 fi
+echo "export QT_STYLE_OVERRIDE=fusion" >> "$USER_HOME/.profile"
 
 # Configure gtkgreet
-tee /etc/greetd/gtkgreet.css << EOL
+cat > /etc/greetd/gtkgreet.css << EOL
 window {
   background: rgba(48,49,52,0.9);
   backdrop-filter: blur(4px);
 }
-
 #box {
   background: #202124;
   border-radius: 8px;
@@ -498,7 +306,6 @@ window {
   width: 400px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
-
 #entry, #combo {
   background: #3C4043;
   color: #FFFFFF;
@@ -506,131 +313,78 @@ window {
   padding: 8px;
   margin: 8px;
 }
-
 #button {
   background: #3C4043;
   color: #FFFFFF;
   border-radius: 4px;
   padding: 8px;
 }
-
 #button:hover {
   background: #8AB4F8;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 EOL
 
-# Configure wallpaper color extraction
-tee /usr/local/bin/wallpaper-color.sh << EOL
+# Configure wallpaper color
+cat > /usr/local/bin/wallpaper-color.sh << EOL
 #!/bin/sh
 WALLPAPER="/usr/share/backgrounds/orchis-wallpaper.jpg"
-if [ -f "$WALLPAPER" ]; then
-  COLOR=$(magick "$WALLPAPER" -resize 1x1 txt: | grep -o "#[0-9A-F]\{6\}" | head -1)
-  if [ -n "$COLOR" ]; then
-    echo "$COLOR"
-    exit 0
-  fi
-fi
-echo "#8AB4F8"
+[ -f "$WALLPAPER" ] && magick "$WALLPAPER" -resize 1x1 txt: | grep -o "#[0-9A-F]\{6\}" | head -1 || echo "#8AB4F8"
 EOL
 chmod +x /usr/local/bin/wallpaper-color.sh
 
 # Configure tray popup
-tee /usr/local/bin/tray-popup.sh << EOL
+cat > /usr/local/bin/tray-popup.sh << EOL
 #!/bin/sh
 BRIGHTNESS_DEV=$(ls /sys/class/backlight/* 2>/dev/null | head -1)
-if [ -n "$BRIGHTNESS_DEV" ]; then
+[ -n "$BRIGHTNESS_DEV" ] && {
   MAX_BRIGHTNESS=$(cat "$BRIGHTNESS_DEV/max_brightness")
-  CURRENT_BRIGHTNESS=$(cat "$BRIGHTNESS_DEV/brightness")
-  BRIGHTNESS_PERCENT=$((CURRENT_BRIGHTNESS * 100 / MAX_BRIGHTNESS))
-else
-  BRIGHTNESS_PERCENT=50
-fi
+  BRIGHTNESS_PERCENT=$(( $(cat "$BRIGHTNESS_DEV/brightness") * 100 / MAX_BRIGHTNESS ))
+} || BRIGHTNESS_PERCENT=50
 echo "popup {"
 echo "  label { text = 'Quick Settings'; font = 'Roboto 12'; color = '#FFFFFF'; }"
 echo "  button { text = 'Wi-Fi'; exec = '/usr/local/bin/wifi-toggle.sh'; }"
 echo "  button { text = 'Volume'; exec = '/usr/local/bin/volume-toggle.sh'; }"
 echo "  button { text = 'Bluetooth'; exec = '/usr/local/bin/bluetooth-toggle.sh'; }"
-if [ -n "$BRIGHTNESS_DEV" ]; then
-  echo "  scale { min = 0; max = 100; value = $BRIGHTNESS_PERCENT; exec = 'echo %d > $BRIGHTNESS_DEV/brightness'; }"
-fi
+[ -n "$BRIGHTNESS_DEV" ] && echo "  scale { min = 0; max = 100; value = $BRIGHTNESS_PERCENT; exec = 'echo %d > $BRIGHTNESS_DEV/brightness'; }"
 echo "}"
 sfwbar -s Network
 EOL
 chmod +x /usr/local/bin/tray-popup.sh
 
 # Configure labwc
-tee "$USER_HOME/.config/labwc/rc.xml" << EOL
+cat > "$USER_HOME/.config/labwc/rc.xml" << EOL
 <?xml version="1.0"?>
 <openbox_config xmlns="http://openbox.org/3.4/rc">
-  <theme>
-    <cornerRadius>4</cornerRadius>
-    <titleLayout>#202124</titleLayout>
-    <shadow>true</shadow>
-  </theme>
+  <theme><cornerRadius>4</cornerRadius><titleLayout>#202124</titleLayout><shadow>true</shadow></theme>
   <keyboard>
-    <keybind key="Super_L">
-      <action name="Execute"><execute>wofi --show drun</execute></action>
-    </keybind>
-    <keybind key="Super-space">
-      <action name="Execute"><execute>wofi --show drun</execute></action>
-    </keybind>
-    <keybind key="Super-d">
-      <action name="ToggleShowDesktop"/>
-    </keybind>
-    <keybind key="A-Tab">
-      <action name="NextWindow"/>
-    </keybind>
-    <keybind key="F3">
-      <action name="NextWindow"/>
-    </keybind>
-    <keybind key="A-F4">
-      <action name="Close"/>
-    </keybind>
-    <keybind key="Super-e">
-      <action name="Execute"><execute>qtfm</execute></action>
-    </keybind>
-    <keybind key="Super-l">
-      <action name="Execute"><execute>waylock</execute></action>
-    </keybind>
-    <keybind key="Print">
-      <action name="Execute"><execute>grim -g "$(slurp)" /home/$USER_NAME/screenshot-$(date +%s).png</execute></action>
-    </keybind>
-    <keybind key="Super-Left">
-      <action name="SnapToEdge"><direction>Left</direction></action>
-    </keybind>
-    <keybind key="Super-Right">
-      <action name="SnapToEdge"><direction>Right</direction></action>
-    </keybind>
-    <keybind key="Super-r">
-      <action name="Execute"><execute>wofi --show run</execute></action>
-    </keybind>
-    <keybind key="Super-s">
-      <action name="Execute"><execute>/usr/local/bin/tray-popup.sh</execute></action>
-    </keybind>
-    <keybind key="Super-b">
-      <action name="Execute"><execute>xdotool key Alt+Left</execute></action>
-    </keybind>
-    <keybind key="Super-n">
-      <action name="Execute"><execute>makoctl restore</execute></action>
-    </keybind>
-    <keybind key="Super-t">
-      <action name="Execute"><execute>/usr/local/bin/toggle-theme.sh</execute></action>
-    </keybind>
+    <keybind key="Super_L"><action name="Execute"><execute>wofi --show drun</execute></action></keybind>
+    <keybind key="Super-space"><action name="Execute"><execute>wofi --show drun</execute></action></keybind>
+    <keybind key="Super-d"><action name="ToggleShowDesktop"/></keybind>
+    <keybind key="A-Tab"><action name="NextWindow"/></keybind>
+    <keybind key="F3"><action name="NextWindow"/></keybind>
+    <keybind key="A-F4"><action name="Close"/></keybind>
+    <keybind key="Super-e"><action name="Execute"><execute>qtfm</execute></action></keybind>
+    <keybind key="Super-l"><action name="Execute"><execute>waylock</execute></action></keybind>
+    <keybind key="Print"><action name="Execute"><execute>grim -g "$(slurp)" /home/$USER_NAME/screenshot-$(date +%s).png</execute></action></keybind>
+    <keybind key="Super-Left"><action name="SnapToEdge"><direction>Left</direction></action></keybind>
+    <keybind key="Super-Right"><action name="SnapToEdge"><direction>Right</direction></action></keybind>
+    <keybind key="Super-r"><action name="Execute"><execute>wofi --show run</execute></action></keybind>
+    <keybind key="Super-s"><action name="Execute"><execute>/usr/local/bin/tray-popup.sh</execute></action></keybind>
+    <keybind key="Super-b"><action name="Execute"><execute>xdotool key Alt+Left</execute></action></keybind>
+    <keybind key="Super-n"><action name="Execute"><execute>makoctl restore</execute></action></keybind>
+    <keybind key="Super-t"><action name="Execute"><execute>/usr/local/bin/toggle-theme.sh</execute></action></keybind>
   </keyboard>
-  <animations>
-    <fadeWindows>true</fadeWindows>
-    <fadeMenus>true</fadeMenus>
-  </animations>
+  <animations><fadeWindows>true</fadeWindows><fadeMenus>true</fadeMenus></animations>
 </openbox_config>
 EOL
-tee "$USER_HOME/.config/labwc/menu.xml" << EOL
+cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_menu>
   <menu id="root-menu" label="Menu">
     <item label="Terminal"><action name="Execute"><execute>foot</execute></action></item>
     <item label="Browser"><action name="Execute"><execute>badwolf</execute></action></item>
-    $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' || true )
+    $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' )
     <item label="Player"><action name="Execute"><execute>celluloid</execute></action></item>
     <item label="Drawing"><action name="Execute"><execute>drawing</execute></action></item>
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
@@ -643,7 +397,7 @@ tee "$USER_HOME/.config/labwc/menu.xml" << EOL
   </menu>
 </openbox_menu>
 EOL
-tee "$USER_HOME/.config/labwc/environment" << EOL
+cat > "$USER_HOME/.config/labwc/environment" << EOL
 QT_QPA_PLATFORM=wayland
 XDG_SESSION_TYPE=wayland
 XDG_SESSION_DESKTOP=labwc
@@ -652,12 +406,11 @@ WAYLAND_DISPLAY=wayland-0
 GDK_BACKEND=wayland,x11
 SDL_VIDEODRIVER=wayland
 _JAVA_AWT_WM_NONREPARENTING=1
-QT_STYLE_OVERRIDE=fusion
 XCURSOR_THEME=Vimix-White
 EOL
 
 # Configure sfwbar
-tee "$USER_HOME/.config/sfwbar/sfwbar.config" << EOL
+cat > "$USER_HOME/.config/sfwbar/sfwbar.config" << EOL
 [bar]
 location = bottom
 height = 48
@@ -666,103 +419,79 @@ exclusive = true
 css = "sfwbar.css"
 modules_left = Launcher TaskBar
 modules_right = Network Volume Bluetooth Battery Clock Tray
-
 [Launcher]
 icon = start-here
 exec = wofi --show drun
-
 [TaskBar]
 icon_size = 32
 pins = foot badwolf qtfm celluloid drawing mupdf blueman-manager pavucontrol
-
 [Network]
 interval = 10
 show_icon = true
 exec = /usr/local/bin/wifi-popup.sh
 action = /usr/local/bin/wifi-toggle.sh
-
 [Volume]
 interval = 5
 show_icon = true
 exec = /usr/local/bin/volume-popup.sh
 action = /usr/local/bin/volume-toggle.sh
-
 [Bluetooth]
 interval = 10
 show_icon = true
 exec = /usr/local/bin/bluetooth-popup.sh
 action = /usr/local/bin/bluetooth-toggle.sh
-
 [Battery]
 interval = 30
 show_icon = true
 show_percentage = true
-
 [Clock]
 interval = 60
 format = %H:%M
-
 [Tray]
 icon_size = 24
 EOL
-
-tee "$USER_HOME/.config/sfwbar/sfwbar.css" << EOL
+cat > "$USER_HOME/.config/sfwbar/sfwbar.css" << EOL
 * {
   font: Roboto 12;
   color: #FFFFFF;
 }
-
 bar {
   background: rgba(32,33,36,0.7);
   border-radius: 4px;
   padding: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
-
 taskbar button {
   padding: 8px;
   margin: 0 4px;
   transition: transform 0.2s ease;
 }
-
 taskbar button image {
   border-radius: 50%;
   background: #FFFFFF;
 }
-
 taskbar button:hover {
   background: #8AB4F8;
   border-radius: 4px;
   transform: scale(1.2);
 }
-
 taskbar button:hover image {
   background: #E8EAED;
 }
-
 taskbar button:active {
   animation: bounce 0.3s;
 }
-
 @keyframes bounce {
   0% { transform: scale(1); }
   50% { transform: scale(1.5); }
   100% { transform: scale(1); }
 }
-
-tray {
-  padding: 8px;
-}
-
-tray image {
-  -gtk-icon-transform: scale(1);
-}
-
+tray { padding: 8px; }
+tray image { -gtk-icon-transform: scale(1); }
 battery, network, volume, bluetooth, clock {
   padding: 8px;
   font: Roboto 10;
 }
-
 popup {
   background: rgba(48,49,52,0.9);
   backdrop-filter: blur(4px);
@@ -771,7 +500,6 @@ popup {
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   transition: all 0.2s ease;
 }
-
 popup button {
   background: #3C4043;
   color: #FFFFFF;
@@ -779,22 +507,18 @@ popup button {
   padding: 8px;
   margin: 4px;
 }
-
 popup button:hover {
   background: #8AB4F8;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
-
 popup scale trough {
   background: #3C4043;
   border-radius: 16px;
 }
-
 popup scale highlight {
   background: #8AB4F8;
   border-radius: 16px;
 }
-
 popup scale slider {
   background: #FFFFFF;
   border-radius: 16px;
@@ -803,7 +527,7 @@ popup scale slider {
 EOL
 
 # Configure sfwbar control scripts
-tee /usr/local/bin/wifi-popup.sh << EOL
+cat > /usr/local/bin/wifi-popup.sh << EOL
 #!/bin/sh
 networks=$(iwctl station wlan0 scan && iwctl station wlan0 get-networks | grep -v "open" | awk 'NR>4 {print $1}')
 echo "popup {"
@@ -815,17 +539,13 @@ echo "}"
 EOL
 chmod +x /usr/local/bin/wifi-popup.sh
 
-tee /usr/local/bin/wifi-toggle.sh << EOL
+cat > /usr/local/bin/wifi-toggle.sh << EOL
 #!/bin/sh
-if iwctl station wlan0 show | grep -q "connected"; then
-  iwctl station wlan0 disconnect
-else
-  iwctl station wlan0 scan
-fi
+iwctl station wlan0 show | grep -q "connected" && iwctl station wlan0 disconnect || iwctl station wlan0 scan
 EOL
 chmod +x /usr/local/bin/wifi-toggle.sh
 
-tee /usr/local/bin/volume-popup.sh << EOL
+cat > /usr/local/bin/volume-popup.sh << EOL
 #!/bin/sh
 volume=$(amixer get Master | grep -o "[0-9]*%" | head -1 | tr -d '%')
 echo "popup {"
@@ -835,44 +555,32 @@ echo "}"
 EOL
 chmod +x /usr/local/bin/volume-popup.sh
 
-tee /usr/local/bin/volume-toggle.sh << EOL
+cat > /usr/local/bin/volume-toggle.sh << EOL
 #!/bin/sh
-if amixer get Master | grep -q "[on]"; then
-  amixer set Master mute
-else
-  amixer set Master unmute
-fi
+amixer get Master | grep -q "[on]" && amixer set Master mute || amixer set Master unmute
 EOL
 chmod +x /usr/local/bin/volume-toggle.sh
 
-tee /usr/local/bin/bluetooth-popup.sh << EOL
+cat > /usr/local/bin/bluetooth-popup.sh << EOL
 #!/bin/sh
 devices=$(bluetoothctl devices | awk '{print $2, $3}')
 echo "popup {"
 echo "  label { text = 'Bluetooth Devices'; font = 'Roboto 12'; color = '#FFFFFF'; }"
-if [ -n "$devices" ]; then
-  while read -r mac name; do
-    echo "  button { text = '$name'; exec = 'bluetoothctl connect $mac'; }"
-  done <<< "$devices"
-else
-  echo "  label { text = 'No devices found'; font = 'Roboto 10'; color = '#FFFFFF'; }"
-fi
+[ -n "$devices" ] && while read -r mac name; do
+  echo "  button { text = '$name'; exec = 'bluetoothctl connect $mac'; }"
+done <<< "$devices" || echo "  label { text = 'No devices found'; font = 'Roboto 10'; color = '#FFFFFF'; }"
 echo "}"
 EOL
 chmod +x /usr/local/bin/bluetooth-popup.sh
 
-tee /usr/local/bin/bluetooth-toggle.sh << EOL
+cat > /usr/local/bin/bluetooth-toggle.sh << EOL
 #!/bin/sh
-if bluetoothctl show | grep -q "Powered: yes"; then
-  bluetoothctl power off
-else
-  bluetoothctl power on
-fi
+bluetoothctl show | grep -q "Powered: yes" && bluetoothctl power off || bluetoothctl power on
 EOL
 chmod +x /usr/local/bin/bluetooth-toggle.sh
 
-# Configure light/dark mode toggle
-tee /usr/local/bin/toggle-theme.sh << EOL
+# Configure theme toggle
+cat > /usr/local/bin/toggle-theme.sh << EOL
 #!/bin/sh
 CONFIG="$HOME/.config/gtk-3.0/settings.ini"
 SFWBAR_CSS="$HOME/.config/sfwbar/sfwbar.css"
@@ -933,14 +641,12 @@ else
   sed -i 's/XCURSOR_THEME=Vimix-Black/XCURSOR_THEME=Vimix-White/' "$ENV_FILE"
   sed -i 's/#button:hover { background: #[0-9A-F]\{6\};/#button:hover { background: "$DYNAMIC_COLOR";/' "$GTG_CSS"
 fi
-pkill -u "$USER" -USR1 sfwbar
-pkill -u "$USER" -USR1 mako
-pkill -u "$USER" -USR1 labwc
+pkill -u "$USER" -USR1 sfwbar mako labwc
 EOL
 chmod +x /usr/local/bin/toggle-theme.sh
 
 # Configure wofi
-tee "$USER_HOME/.config/wofi/config" << EOL
+cat > "$USER_HOME/.config/wofi/config" << EOL
 width=400
 height=600
 columns=4
@@ -949,14 +655,12 @@ show=drun
 matching=fuzzy
 sort_order=alphabetical
 EOL
-
-tee "$USER_HOME/.config/wofi/style.css" << EOL
+cat > "$USER_HOME/.config/wofi/style.css" << EOL
 * {
   font-family: Roboto;
   font-size: 12pt;
   color: #FFFFFF;
 }
-
 window {
   background: rgba(48,49,52,0.9);
   backdrop-filter: blur(4px);
@@ -966,15 +670,10 @@ window {
   opacity: 0;
   transition: opacity 0.2s ease;
 }
-
 window:ready {
   opacity: 1;
 }
-
-#outer-box {
-  padding: 8px;
-}
-
+#outer-box { padding: 8px; }
 #input {
   background: #3C4043;
   color: #FFFFFF;
@@ -982,7 +681,6 @@ window:ready {
   padding: 8px;
   margin-bottom: 8px;
 }
-
 #entry {
   background: #202124;
   border-radius: 4px;
@@ -990,38 +688,31 @@ window:ready {
   margin: 4px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
-
 #entry image {
   border-radius: 50%;
   background: #FFFFFF;
 }
-
 #entry:selected {
   background: #8AB4F8;
   border-radius: 4px;
 }
-
 #entry:selected image {
   background: #E8EAED;
 }
 EOL
 
 # Configure foot
-tee "$USER_HOME/.config/foot/foot.ini" << EOL
+cat > "$USER_HOME/.config/foot/foot.ini" << EOL
 [colors]
 background=303134
 foreground=FFFFFF
 EOL
 
 # Configure qtfm
-if [ -z "$SKIP_QTFM" ]; then
-  tee "$USER_HOME/.config/qtfm/qtfm.conf" << EOL
-showThumbnails=true
-EOL
-fi
+[ -z "$SKIP_QTFM" ] && echo "showThumbnails=true" > "$USER_HOME/.config/qtfm/qtfm.conf"
 
 # Configure mako
-tee "$USER_HOME/.config/mako/config" << EOL
+cat > "$USER_HOME/.config/mako/config" << EOL
 background-color=#303134
 text-color=#FFFFFF
 border-color=#3C4043
@@ -1038,14 +729,14 @@ box-shadow=0 2px 4px rgba(0,0,0,0.2)
 EOL
 
 # Configure clipman
-tee "$USER_HOME/.config/clipman/config" << EOL
+cat > "$USER_HOME/.config/clipman/config" << EOL
 [clipman]
 history_size = 50
 persistent = true
 EOL
 
 # Configure labwc autostart
-tee "$USER_HOME/.config/labwc/autostart" << EOL
+cat > "$USER_HOME/.config/labwc/autostart" << EOL
 $AUTOSTART
 wbg /usr/share/backgrounds/orchis-wallpaper.jpg &
 sfwbar &
@@ -1058,13 +749,12 @@ wireplumber &
 EOL
 
 # Configure badwolf
-tee "$USER_HOME/.config/badwolf/config" << EOL
+cat > "$USER_HOME/.config/badwolf/config" << EOL
 javascript_enabled = false
 EOL
 
-# Dynamic power management
-mkdir -p /etc/local.d /etc/udev/rules.d
-tee /etc/local.d/power-optimize.start << EOL
+# Configure power management
+cat > /etc/local.d/power-optimize.start << EOL
 #!/bin/sh
 if grep -q "GenuineIntel" /proc/cpuinfo; then
   [ -d /sys/devices/system/cpu/intel_pstate ] && echo powersave > /sys/devices/system/cpu/intel_pstate/status
@@ -1094,8 +784,8 @@ done
 EOL
 chmod +x /etc/local.d/power-optimize.start
 
-# Dynamic HDD/SSD optimization
-tee /etc/local.d/disk-optimize.start << EOL
+# Configure disk optimization
+cat > /etc/local.d/disk-optimize.start << EOL
 #!/bin/sh
 for disk in /dev/sd[a-z] /dev/nvme[0-9]n[0-9]; do
   if [ -b "$disk" ]; then
@@ -1116,14 +806,11 @@ done
 EOL
 chmod +x /etc/local.d/disk-optimize.start
 
-# Memory optimization
-tee /etc/sysctl.d/99-swappiness.conf << EOL
-vm.swappiness=10
-vm.vfs_cache_pressure=50
-EOL
+# Configure memory
+echo "vm.swappiness=10\nvm.vfs_cache_pressure=50" > /etc/sysctl.d/99-swappiness.conf
 
-# Udev rules
-tee /etc/udev/rules.d/90-power-optimize.rules << EOL
+# Configure udev rules
+cat > /etc/udev/rules.d/90-power-optimize.rules << EOL
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/usr/sbin/iw dev %k set power_save on"
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="e*", RUN+="/bin/sh -c '[ -w /sys%p/device/power/control ] && echo auto > /sys%p/device/power/control'"
 ACTION=="add|change", KERNEL=="sd[a-z]", RUN+="/etc/local.d/disk-optimize.start"
@@ -1131,14 +818,10 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", RUN+="/usr
 ACTION=="add", SUBSYSTEM=="drm", RUN+="/bin/sh -c '[ -f /sys/%p/device/power_dpm_force_performance_level ] && echo low > /sys/%p/device/power_dpm_force_performance_level'"
 EOL
 
-# Suspend/Resume hooks
-mkdir -p /usr/lib/elogind/system-sleep
-tee /usr/lib/elogind/system-sleep/00-alpine-power << EOL
+# Configure suspend/resume
+cat > /usr/lib/elogind/system-sleep/00-alpine-power << EOL
 #!/bin/sh
 case "$1" in
-  pre)
-    : # Pre-suspend optimizations
-    ;;
   post)
     /etc/local.d/power-optimize.start
     /etc/local.d/disk-optimize.start
@@ -1148,75 +831,12 @@ exit 0
 EOL
 chmod +x /usr/lib/elogind/system-sleep/00-alpine-power
 
-# Schedule weekly TRIM
-tee /etc/crontabs/root << EOL
-0 0 * * 0 /usr/sbin/fstrim -v /
-EOL
-
-# Speed up boot
-rc-update add mdev sysinit
-rc-update add hwdrivers sysinit
-
-# Set ownership for user config files
-[ -d "$USER_HOME/.config" ] && chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/.config" || {
-  echo "Failed to set proper ownership on configuration files" >&2
-}
-chown root:root /usr/local/bin/* || {
-  echo "Failed to set ownership on scripts" >&2
-}
-
-# Enable services
-echo "Enabling system services..."
-rc-update add local default || echo "Warning: Failed to add local to boot services" >&2
-rc-update add polkit default || echo "Warning: Failed to add polkit to boot services" >&2
-rc-update add crond default || echo "Warning: Failed to add crond to boot services" >&2
+# Configure TRIM
+echo "0 0 * * 0 /usr/sbin/fstrim -v /" >> /etc/crontabs/root
 
 # Cleanup
-echo "Cleaning up build dependencies..."
-BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
-for pkg in $RUNTIME_DEPS; do
-  BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
-done
+echo "Cleaning up..."
+BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev sassc"
 apk del $BUILDTIME_DEPS || echo "Warning: Failed to remove build dependencies" >&2
-rm -rf /tmp/* || true
-
-# Create fallback background if needed
-if [ ! -f /usr/share/backgrounds/orchis-wallpaper.jpg ]; then
-  mkdir -p /usr/share/backgrounds
-  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /usr/share/backgrounds/default.png
-fi
-
-# Verification
-echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management."
-echo "To verify:"
-echo "1. Reboot and login via gtkgreet (labwc session)."
-echo "2. Test sound: play a file in celluloid."
-echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device."
-echo "4. Test Bluetooth audio: play a file in celluloid with Bluetooth device connected."
-echo "5. Test qtfm: open qtfm, verify image/video thumbnails."
-echo "6. Test clipboard: copy text, run 'wl-paste' to verify."
-echo "7. Test screenshot: press PrtSc or select 'Screenshot' from wofi."
-echo "8. Test file picker: use badwolf to upload a file."
-echo "9. Test drawing: select 'Drawing' from wofi, draw a shape, save as PNG."
-echo "10. Test sfwbar shelf: Verify bottom bar, pinned apps, tray with controls."
-echo "11. Test wofi launcher: Press Super or Super+Space, verify app grid."
-echo "12. Test wofi search: Type in wofi, verify instant app filtering."
-echo "13. Test sfwbar controls: Click or press Super+S, verify popups."
-echo "14. Test notifications: Trigger via 'notify-send test', verify compact."
-echo "15. Test light/dark mode: Press Super+T, verify theme switch."
-echo "16. Test window styling: Open foot/badwolf/qtfm, verify labwc titlebars."
-echo "17. Test shortcuts: Verify Super, Super+Space, Super+D, Alt+Tab, etc."
-echo "18. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0."
-echo "19. Idle 2 minutes to confirm lock, 5 minutes for suspend."
-echo "20. Check disk: cat /sys/block/sda/queue/scheduler."
-echo "21. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor."
-echo "22. Check elogind/TLP coordination: systemctl status tlp."
-echo "23. Check themes: Verify qtfm/celluloid use OrchisDark/Light Qt theme."
-echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "25. Check XDG_RUNTIME_DIR: Run 'echo $XDG_RUNTIME_DIR'."
-echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
-echo "27. Check source versions: qtfm, Orchis themes, Vimix cursors."
-echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|xcur2png|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
-echo "======================================================================"
+rm -rf /tmp/*
+chown root:root /usr/local/bin/*
