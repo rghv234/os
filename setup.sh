@@ -298,12 +298,46 @@ EOL
 # Configure sound
 echo "Configuring sound services..."
 if ! rc-service pipewire status >/dev/null 2>&1; then
+  # Ensure pipewire service file exists
+  if [ ! -f /etc/init.d/pipewire ]; then
+    echo "Creating pipewire service file..."
+    cat > /etc/init.d/pipewire << EOL
+#!/sbin/openrc-run
+description="PipeWire Multimedia Server"
+command=/usr/bin/pipewire
+command_args=""
+command_background=true
+pidfile=/run/pipewire.pid
+depend() {
+    need dbus
+    after network-online
+}
+EOL
+    chmod +x /etc/init.d/pipewire
+    rc-update add pipewire default 2>/dev/null || echo "Warning: Failed to add pipewire to boot services" >&2
+  fi
   rc-service pipewire start || echo "Warning: Failed to start pipewire service" >&2
-  rc-update add pipewire default 2>/dev/null || echo "Warning: Failed to add pipewire to boot services" >&2
 fi
 if ! rc-service wireplumber status >/dev/null 2>&1; then
+  # Ensure wireplumber service file exists
+  if [ ! -f /etc/init.d/wireplumber ]; then
+    echo "Creating wireplumber service file..."
+    cat > /etc/init.d/wireplumber << EOL
+#!/sbin/openrc-run
+description="WirePlumber Multimedia Session Manager"
+command=/usr/bin/wireplumber
+command_args=""
+command_background=true
+pidfile=/run/wireplumber.pid
+depend() {
+    need pipewire
+    after pipewire
+}
+EOL
+    chmod +x /etc/init.d/wireplumber
+    rc-update add wireplumber default 2>/dev/null || echo "Warning: Failed to add wireplumber to boot services" >&2
+  fi
   rc-service wireplumber start || echo "Warning: Failed to start wireplumber service" >&2
-  rc-update add wireplumber default 2>/dev/null || echo "Warning: Failed to add wireplumber to boot services" >&2
 fi
 rc-update add alsa default 2>/dev/null || echo "Warning: Failed to add alsa to boot services"
 alsactl init 2>/dev/null || true
@@ -348,14 +382,16 @@ addgroup greetd video 2>/dev/null || true
 addgroup greetd seat 2>/dev/null || true
 addgroup greetd input 2>/dev/null || true
 addgroup greetd bluetooth 2>/dev/null || true
-if [ -z "$SKIP_ORCHIS_GTK" ]; then
+if [ -z "$SKIP_ORCHIS_GTK" ] && [ -d "/usr/share/themes/Orchis-Dark" ]; then
   mkdir -p /usr/share/themes
   cp -r /usr/share/themes/Orchis-Dark /usr/share/themes/ || {
     echo "Warning: Failed to copy Orchis-Dark theme for gtkgreet." >&2
   }
-  cp -r /usr/share/themes/Orchis-Light /usr/share/themes/ || {
-    echo "Warning: Failed to copy Orchis-Light theme for gtkgreet." >&2
-  }
+  if [ -d "/usr/share/themes/Orchis-Light" ]; then
+    cp -r /usr/share/themes/Orchis-Light /usr/share/themes/ || {
+      echo "Warning: Failed to copy Orchis-Light theme for gtkgreet." >&2
+    }
+  fi
 fi
 
 # User configuration
@@ -389,32 +425,6 @@ addgroup "$USER_NAME" audio 2>/dev/null || true
 addgroup "$USER_NAME" bluetooth 2>/dev/null || true
 addgroup "$USER_NAME" pipewire 2>/dev/null || true
 
-# Configure GTK theme
-if [ -z "$SKIP_ORCHIS_GTK" ]; then
-  cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
-[Settings]
-gtk-theme-name=Orchis-Dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-cursor-theme-name=Vimix-White
-gtk-font-name=Roboto 10
-gtk-application-prefer-dark-theme=true
-gtk-button-images=true
-gtk-menu-images=true
-EOL
-  cat > "$USER_HOME/.config/gtk-4.0/settings.ini" << EOL
-[Settings]
-gtk-theme-name=Orchis-Dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-cursor-theme-name=Vimix-White
-gtk-font-name=Roboto 10
-gtk-application-prefer-dark-theme=true
-gtk-button-images=true
-gtk-menu-images=true
-EOL
-  ln -sf /usr/share/themes/Orchis-Dark/gtk-4.0 "$USER_HOME/.config/gtk-4.0" || {
-    echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
-  }
-fi
 # Configure wlsleephandler-rs or fallback
 if [ -z "$SKIP_WLSLEEPHANDLER" ] && command -v wlsleephandler-rs >/dev/null 2>&1; then
   echo "Configuring wlsleephandler-rs..."
@@ -433,8 +443,8 @@ else
   cat > /usr/local/bin/idle-suspend.sh << EOL
 #!/bin/sh
 check_idle() {
-  idle_hint=\$(loginctl show-session -p IdleHint 2>/dev/null || echo "IdleHint=no")
-  if echo "\$idle_hint" | grep -q "IdleHint=yes"; then
+  idle_hint=$(loginctl show-session -p IdleHint 2>/dev/null || echo "IdleHint=no")
+  if echo "$idle_hint" | grep -q "IdleHint=yes"; then
     echo "System is idle, locking and suspending..."
     waylock -fork-on-lock
     loginctl suspend
@@ -456,6 +466,7 @@ fi
 
 # Configure GTK theme
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
+  mkdir -p "$USER_HOME/.config/gtk-3.0"  # Ensure directory exists
   cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
 [Settings]
 gtk-theme-name=Orchis-Dark
@@ -466,6 +477,7 @@ gtk-application-prefer-dark-theme=true
 gtk-button-images=true
 gtk-menu-images=true
 EOL
+  mkdir -p "$USER_HOME/.config/gtk-4.0"  # Ensure directory exists
   cat > "$USER_HOME/.config/gtk-4.0/settings.ini" << EOL
 [Settings]
 gtk-theme-name=Orchis-Dark
@@ -519,7 +531,7 @@ if [ -z "$SKIP_ORCHIS_KDE" ]; then
   if [ -z "$SKIP_QT6CT" ] && command -v qt6ct >/dev/null 2>&1; then
     echo "export QT_QPA_PLATFORMTHEME=qt6ct" >> "$USER_HOME/.config/labwc/environment"  # Prefer qt6ct in LabWC session if available
   fi
-  echo "export QT_QPA_PLATFORMTHEME=\${QT_QPA_PLATFORMTHEME:-qt5ct}" >> "$USER_HOME/.profile"  # Fallback to qt5ct if unset
+  echo "export QT_QPA_PLATFORMTHEME=${QT_QPA_PLATFORMTHEME:-qt5ct}" >> "$USER_HOME/.profile"  # Fallback to qt5ct if unset
   echo "Note: Set QT_QPA_PLATFORMTHEME=qt6ct for Qt 6 apps (e.g., qtfm) if qt6ct is installed, or qt5ct for Qt 5 apps (e.g., smplayer)." >&2
 fi
 
@@ -572,10 +584,10 @@ EOL
 cat > /usr/local/bin/wallpaper-color.sh << EOL
 #!/bin/sh
 WALLPAPER="/usr/share/backgrounds/orchis-wallpaper.jpg"
-if [ -f "\$WALLPAPER" ]; then
-  COLOR=\$(magick "\$WALLPAPER" -resize 1x1 txt: | grep -o "#[0-9A-F]\{6\}" | head -1)
-  if [ -n "\$COLOR" ]; then
-    echo "\$COLOR"
+if [ -f "$WALLPAPER" ]; then
+  COLOR=$(magick "$WALLPAPER" -resize 1x1 txt: | grep -o "#[0-9A-F]\{6\}" | head -1)
+  if [ -n "$COLOR" ]; then
+    echo "$COLOR"
     exit 0
   fi
 fi
@@ -586,11 +598,11 @@ chmod +x /usr/local/bin/wallpaper-color.sh
 # Configure tray popup
 cat > /usr/local/bin/tray-popup.sh << EOL
 #!/bin/sh
-BRIGHTNESS_DEV=\$(ls /sys/class/backlight/* 2>/dev/null | head -1)
-if [ -n "\$BRIGHTNESS_DEV" ]; then
-  MAX_BRIGHTNESS=\$(cat "\$BRIGHTNESS_DEV/max_brightness")
-  CURRENT_BRIGHTNESS=\$(cat "\$BRIGHTNESS_DEV/brightness")
-  BRIGHTNESS_PERCENT=\$((CURRENT_BRIGHTNESS * 100 / MAX_BRIGHTNESS))
+BRIGHTNESS_DEV=$(ls /sys/class/backlight/* 2>/dev/null | head -1)
+if [ -n "$BRIGHTNESS_DEV" ]; then
+  MAX_BRIGHTNESS=$(cat "$BRIGHTNESS_DEV/max_brightness")
+  CURRENT_BRIGHTNESS=$(cat "$BRIGHTNESS_DEV/brightness")
+  BRIGHTNESS_PERCENT=$((CURRENT_BRIGHTNESS * 100 / MAX_BRIGHTNESS))
 else
   BRIGHTNESS_PERCENT=50
 fi
@@ -599,8 +611,8 @@ echo "  label { text = 'Quick Settings'; font = 'Roboto 12'; color = '#FFFFFF'; 
 echo "  button { text = 'Wi-Fi'; exec = '/usr/local/bin/wifi-toggle.sh'; }"
 echo "  button { text = 'Volume'; exec = '/usr/local/bin/volume-toggle.sh'; }"
 echo "  button { text = 'Bluetooth'; exec = '/usr/local/bin/bluetooth-toggle.sh'; }"
-if [ -n "\$BRIGHTNESS_DEV" ]; then
-  echo "  scale { min = 0; max = 100; value = \$BRIGHTNESS_PERCENT; exec = 'echo %d > \$BRIGHTNESS_DEV/brightness'; }"
+if [ -n "$BRIGHTNESS_DEV" ]; then
+  echo "  scale { min = 0; max = 100; value = $BRIGHTNESS_PERCENT; exec = 'echo %d > $BRIGHTNESS_DEV/brightness'; }"
 fi
 echo "}"
 sfwbar -s Network
@@ -686,7 +698,7 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>
     <item label="Bluetooth"><action name="Execute"><execute>blueman-manager</execute></action></item>
     <item label="Audio"><action name="Execute"><execute>pavucontrol</execute></action></item>
-    <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
+    <item label="Screenshot"><action name="Execute"><execute>grim -g \"$(slurp)\" /home/$USER_NAME/screenshot-$(date +%s).png</execute></action></item>
     <item label="Exit"><action name="Execute"><execute>labwc -e</execute></action></item>
   </menu>
 </openbox_menu>
@@ -853,11 +865,11 @@ EOL
 # Configure sfwbar control scripts
 cat > /usr/local/bin/wifi-popup.sh << EOL
 #!/bin/sh
-networks=\$(iwctl station wlan0 scan && iwctl station wlan0 get-networks | grep -v "open" | awk 'NR>4 {print \$1}')
+networks=$(iwctl station wlan0 scan && iwctl station wlan0 get-networks | grep -v "open" | awk 'NR>4 {print $1}')
 echo "popup {"
 echo "  label { text = 'Wi-Fi Networks'; font = 'Roboto 12'; atop: center; color = '#FFFFFF'; }"
-for net in \$networks; do
-  echo "  button { text = '\$net'; exec = 'iwctl station wlan0 connect \"\$net\"'; }"
+for net in $networks; do
+  echo "  button { text = '$net'; exec = 'iwctl station wlan0 connect \"$net\"'; }"
 done
 echo "}"
 EOL
@@ -875,17 +887,17 @@ chmod +x /usr/local/bin/wifi-toggle.sh
 
 cat > /usr/local/bin/volume-popup.sh << EOL
 #!/bin/sh
-volume=\$(amixer get Master | grep -o "[0-9]*%" | head -1 | tr -d '%')
+volume=$(amixer get Master | grep -o "[0-9]*%" | head -1 | tr -d '%')
 echo "popup {"
 echo "  label { text = 'Volume'; font = 'Roboto 12'; color = '#FFFFFF'; }"
-echo "  scale { min = 0; max = 100; value = \$volume; exec = 'amixer set Master %d%%'; }"
+echo "  scale { min = 0; max = 100; value = $volume; exec = 'amixer set Master %d%%'; }"
 echo "}"
 EOL
 chmod +x /usr/local/bin/volume-popup.sh
 
 cat > /usr/local/bin/volume-toggle.sh << EOL
 #!/bin/sh
-if amixer get Master | grep -q "\[on\]"; then
+if amixer get Master | grep -q "[on]"; then
   amixer set Master mute
 else
   amixer set Master unmute
@@ -895,13 +907,13 @@ chmod +x /usr/local/bin/volume-toggle.sh
 
 cat > /usr/local/bin/bluetooth-popup.sh << EOL
 #!/bin/sh
-devices=\$(bluetoothctl devices | awk '{print \$2, \$3}')
+devices=$(bluetoothctl devices | awk '{print $2, $3}')
 echo "popup {"
 echo "  label { text = 'Bluetooth Devices'; font = 'Roboto 12'; color = '#FFFFFF'; }"
-if [ -n "\$devices" ]; then
+if [ -n "$devices" ]; then
   while read -r mac name; do
-    echo "  button { text = '\$name'; exec = 'bluetoothctl connect \$mac'; }"
-  done <<< "\$devices"
+    echo "  button { text = '$name'; exec = 'bluetoothctl connect $mac'; }"
+  done <<< "$devices"
 else
   echo "  label { text = 'No devices found'; font = 'Roboto 10'; color = '#FFFFFF'; }"
 fi
@@ -930,65 +942,65 @@ MAKO_CONFIG="$USER_HOME/.config/mako/config"
 FOOT_CONFIG="$USER_HOME/.config/foot/foot.ini"
 ENV_FILE="$USER_HOME/.config/labwc/environment"
 GTG_CSS="/etc/greetd/gtkgreet.css"
-DYNAMIC_COLOR=\$(/usr/local/bin/wallpaper-color.sh)
-if grep -q "gtk-theme-name=Orchis-Dark" "\$CONFIG"; then
-  sed -i 's/gtk-theme-name=Orchis-Dark/gtk-theme-name=Orchis-Light/' "\$CONFIG"
-  sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "\$CONFIG"
-  sed -i 's/gtk-cursor-theme-name=Vimix-White/gtk-cursor-theme-name=Vimix-Black/' "\$CONFIG"
-  sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "\$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisLight.colors/' "\$QTCONFIG"
-  sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "\$QTCONFIG"
-  sed -i 's/active-window=#202124/active-window=#F1F3F4/' "\$QTCONFIG"
-  sed -i 's/active-highlight=#8AB4F8/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
-  sed -i 's/background: rgba(32,33,36,0.7);/background: rgba(241,243,244,0.7);/' "\$SFWBAR_CSS"
-  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "\$SFWBAR_CSS"
-  sed -i 's/color: #FFFFFF;/color: #202124;/' "\$SFWBAR_CSS"
-  sed -i 's/taskbar button image { background: #FFFFFF; }/taskbar button image { background: #202124; }/' "\$SFWBAR_CSS"
-  sed -i 's/taskbar button:hover { background: #8AB4F8;/taskbar button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/popup button:hover { background: #8AB4F8;/popup button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/popup scale highlight { background: #8AB4F8;/popup scale highlight { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "\$WOFI_CSS"
-  sed -i 's/color: #FFFFFF;/color: #202124;/' "\$WOFI_CSS"
-  sed -i 's/background: #3C4043;/background: #E8EAED;/' "\$WOFI_CSS"
-  sed -i 's/background: #202124;/background: #FFFFFF;/' "\$WOFI_CSS"
-  sed -i 's/#entry:selected { background: #8AB4F8;/#entry:selected { background: '"\$DYNAMIC_COLOR"';/' "\$WOFI_CSS"
-  sed -i 's/background-color=#303134/background-color=#FFFFFF/' "\$MAKO_CONFIG"
-  sed -i 's/text-color=#FFFFFF/text-color=#202124/' "\$MAKO_CONFIG"
-  sed -i 's/border-color=#3C4043/border-color=#E8EAED/' "\$MAKO_CONFIG"
-  sed -i 's/action-color=#8AB4F8/action-color='"\$DYNAMIC_COLOR"'/' "\$MAKO_CONFIG"
-  sed -i 's/background=303134/background=F1F3F4/' "\$FOOT_CONFIG"
-  sed -i 's/foreground=FFFFFF/foreground=202124/' "\$FOOT_CONFIG"
-  sed -i 's/XCURSOR_THEME=Vimix-White/XCURSOR_THEME=Vimix-Black/' "\$ENV_FILE"
-  sed -i 's/#button:hover { background: #8AB4F8;/#button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$GTG_CSS"
+DYNAMIC_COLOR=$(/usr/local/bin/wallpaper-color.sh)
+if grep -q "gtk-theme-name=Orchis-Dark" "$CONFIG"; then
+  sed -i 's/gtk-theme-name=Orchis-Dark/gtk-theme-name=Orchis-Light/' "$CONFIG"
+  sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "$CONFIG"
+  sed -i 's/gtk-cursor-theme-name=Vimix-White/gtk-cursor-theme-name=Vimix-Black/' "$CONFIG"
+  sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "$CONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisLight.colors/' "$QTCONFIG"
+  sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "$QTCONFIG"
+  sed -i 's/active-window=#202124/active-window=#F1F3F4/' "$QTCONFIG"
+  sed -i 's/active-highlight=#8AB4F8/active-highlight="$DYNAMIC_COLOR"/' "$QTCONFIG"
+  sed -i 's/background: rgba(32,33,36,0.7);/background: rgba(241,243,244,0.7);/' "$SFWBAR_CSS"
+  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "$SFWBAR_CSS"
+  sed -i 's/color: #FFFFFF;/color: #202124;/' "$SFWBAR_CSS"
+  sed -i 's/taskbar button image { background: #FFFFFF; }/taskbar button image { background: #202124; }/' "$SFWBAR_CSS"
+  sed -i 's/taskbar button:hover { background: #8AB4F8;/taskbar button:hover { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/popup button:hover { background: #8AB4F8;/popup button:hover { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/popup scale highlight { background: #8AB4F8;/popup scale highlight { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "$WOFI_CSS"
+  sed -i 's/color: #FFFFFF;/color: #202124;/' "$WOFI_CSS"
+  sed -i 's/background: #3C4043;/background: #E8EAED;/' "$WOFI_CSS"
+  sed -i 's/background: #202124;/background: #FFFFFF;/' "$WOFI_CSS"
+  sed -i 's/#entry:selected { background: #8AB4F8;/#entry:selected { background: "$DYNAMIC_COLOR";/' "$WOFI_CSS"
+  sed -i 's/background-color=#303134/background-color=#FFFFFF/' "$MAKO_CONFIG"
+  sed -i 's/text-color=#FFFFFF/text-color=#202124/' "$MAKO_CONFIG"
+  sed -i 's/border-color=#3C4043/border-color=#E8EAED/' "$MAKO_CONFIG"
+  sed -i 's/action-color=#8AB4F8/action-color="$DYNAMIC_COLOR"/' "$MAKO_CONFIG"
+  sed -i 's/background=303134/background=F1F3F4/' "$FOOT_CONFIG"
+  sed -i 's/foreground=FFFFFF/foreground=202124/' "$FOOT_CONFIG"
+  sed -i 's/XCURSOR_THEME=Vimix-White/XCURSOR_THEME=Vimix-Black/' "$ENV_FILE"
+  sed -i 's/#button:hover { background: #8AB4F8;/#button:hover { background: "$DYNAMIC_COLOR";/' "$GTG_CSS"
 else
-  sed -i 's/gtk-theme-name=Orchis-Light/gtk-theme-name=Orchis-Dark/' "\$CONFIG"
-  sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "\$CONFIG"
-  sed -i 's/gtk-cursor-theme-name=Vimix-Black/gtk-cursor-theme-name=Vimix-White/' "\$CONFIG"
-  sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "\$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisDark.colors/' "\$QTCONFIG"
-  sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "\$QTCONFIG"
-  sed -i 's/active-window=#F1F3F4/active-window=#202124/' "\$QTCONFIG"
-  sed -i 's/active-highlight=#[0-9A-F]\{6\}/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
-  sed -i 's/background: rgba(241,243,244,0.7);/background: rgba(32,33,36,0.7);/' "\$SFWBAR_CSS"
-  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "\$SFWBAR_CSS"
-  sed -i 's/color: #202124;/color: #FFFFFF;/' "\$SFWBAR_CSS"
-  sed -i 's/taskbar button image { background: #202124; }/taskbar button image { background: #FFFFFF; }/' "\$SFWBAR_CSS"
-  sed -i 's/taskbar button:hover { background: #[0-9A-F]\{6\};/taskbar button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/popup button:hover { background: #[0-9A-F]\{6\};/popup button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/popup scale highlight { background: #[0-9A-F]\{6\};/popup scale highlight { background: '"\$DYNAMIC_COLOR"';/' "\$SFWBAR_CSS"
-  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "\$WOFI_CSS"
-  sed -i 's/color: #202124;/color: #FFFFFF;/' "\$WOFI_CSS"
-  sed -i 's/background: #E8EAED;/background: #3C4043;/' "\$WOFI_CSS"
-  sed -i 's/background: #FFFFFF;/background: #202124;/' "\$WOFI_CSS"
-  sed -i 's/#entry:selected { background: #[0-9A-F]\{6\};/#entry:selected { background: '"\$DYNAMIC_COLOR"';/' "\$WOFI_CSS"
-  sed -i 's/background-color=#FFFFFF/background-color=#303134/' "\$MAKO_CONFIG"
-  sed -i 's/text-color=#202124/text-color=#FFFFFF/' "\$MAKO_CONFIG"
-  sed -i 's/border-color=#E8EAED/border-color=#3C4043/' "\$MAKO_CONFIG"
-  sed -i 's/action-color=#[0-9A-F]\{6\}/action-color='"\$DYNAMIC_COLOR"'/' "\$MAKO_CONFIG"
-  sed -i 's/background=F1F3F4/background=303134/' "\$FOOT_CONFIG"
-  sed -i 's/foreground=202124/foreground=FFFFFF/' "\$FOOT_CONFIG"
-  sed -i 's/XCURSOR_THEME=Vimix-Black/XCURSOR_THEME=Vimix-White/' "\$ENV_FILE"
-  sed -i 's/#button:hover { background: #[0-9A-F]\{6\};/#button:hover { background: '"\$DYNAMIC_COLOR"';/' "\$GTG_CSS"
+  sed -i 's/gtk-theme-name=Orchis-Light/gtk-theme-name=Orchis-Dark/' "$CONFIG"
+  sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "$CONFIG"
+  sed -i 's/gtk-cursor-theme-name=Vimix-Black/gtk-cursor-theme-name=Vimix-White/' "$CONFIG"
+  sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "$CONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisDark.colors/' "$QTCONFIG"
+  sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "$QTCONFIG"
+  sed -i 's/active-window=#F1F3F4/active-window=#202124/' "$QTCONFIG"
+  sed -i 's/active-highlight=#[0-9A-F]\{6\}/active-highlight="$DYNAMIC_COLOR"/' "$QTCONFIG"
+  sed -i 's/background: rgba(241,243,244,0.7);/background: rgba(32,33,36,0.7);/' "$SFWBAR_CSS"
+  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "$SFWBAR_CSS"
+  sed -i 's/color: #202124;/color: #FFFFFF;/' "$SFWBAR_CSS"
+  sed -i 's/taskbar button image { background: #202124; }/taskbar button image { background: #FFFFFF; }/' "$SFWBAR_CSS"
+  sed -i 's/taskbar button:hover { background: #[0-9A-F]\{6\};/taskbar button:hover { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/popup button:hover { background: #[0-9A-F]\{6\};/popup button:hover { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/popup scale highlight { background: #[0-9A-F]\{6\};/popup scale highlight { background: "$DYNAMIC_COLOR";/' "$SFWBAR_CSS"
+  sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "$WOFI_CSS"
+  sed -i 's/color: #202124;/color: #FFFFFF;/' "$WOFI_CSS"
+  sed -i 's/background: #E8EAED;/background: #3C4043;/' "$WOFI_CSS"
+  sed -i 's/background: #FFFFFF;/background: #202124;/' "$WOFI_CSS"
+  sed -i 's/#entry:selected { background: #[0-9A-F]\{6\};/#entry:selected { background: "$DYNAMIC_COLOR";/' "$WOFI_CSS"
+  sed -i 's/background-color=#FFFFFF/background-color=#303134/' "$MAKO_CONFIG"
+  sed -i 's/text-color=#202124/text-color=#FFFFFF/' "$MAKO_CONFIG"
+  sed -i 's/border-color=#E8EAED/border-color=#3C4043/' "$MAKO_CONFIG"
+  sed -i 's/action-color=#[0-9A-F]\{6\}/action-color="$DYNAMIC_COLOR"/' "$MAKO_CONFIG"
+  sed -i 's/background=F1F3F4/background=303134/' "$FOOT_CONFIG"
+  sed -i 's/foreground=202124/foreground=FFFFFF/' "$FOOT_CONFIG"
+  sed -i 's/XCURSOR_THEME=Vimix-Black/XCURSOR_THEME=Vimix-White/' "$ENV_FILE"
+  sed -i 's/#button:hover { background: #[0-9A-F]\{6\};/#button:hover { background: "$DYNAMIC_COLOR";/' "$GTG_CSS"
 fi
 pkill -u "$USER_NAME" -USR1 sfwbar
 pkill -u "$USER_NAME" -USR1 mako
@@ -1129,22 +1141,22 @@ elif grep -q "AuthenticAMD" /proc/cpuinfo; then
   [ -f /sys/devices/system/cpu/amd_pstate/status ] && echo active > /sys/devices/system/cpu/amd_pstate/status
 fi
 for dev in /sys/class/net/wlan*; do
-  [ -e "\$dev" ] && iw dev \$(basename "\$dev") set power_save on
+  [ -e "$dev" ] && iw dev $(basename "$dev") set power_save on
 done
 for eth in /sys/class/net/e*/device/power/control; do
-  [ -w "\$eth" ] && echo auto > "\$eth"
+  [ -w "$eth" ] && echo auto > "$eth"
 done
 for gpu in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
-  [ -f "\$gpu" ] && echo low > "\$gpu"
+  [ -f "$gpu" ] && echo low > "$gpu"
 done
 [ -f /sys/module/nvidia/parameters/modeset ] && echo 0 > /sys/module/nvidia/parameters/modeset
 for b in /sys/class/backlight/*/brightness; do
-  [ -w "\$b" ] || continue
-  max=\$(cat \${b%brightness}max_brightness)
+  [ -w "$b" ] || continue
+  max=$(cat ${b%brightness}max_brightness)
   if grep -q 0 /sys/class/power_supply/AC*/online 2>/dev/null || grep -q 0 /sys/class/power_supply/ADP*/online 2>/dev/null; then
-    echo \$((max * 30 / 100)) > "\$b"
+    echo $((max * 30 / 100)) > "$b"
   else
-    echo \$((max * 70 / 100)) > "\$b"
+    echo $((max * 70 / 100)) > "$b"
   fi
 done
 [ -d /sys/module/snd_hda_intel ] && echo 1 > /sys/module/snd_hda_intel/parameters/power_save
@@ -1155,17 +1167,17 @@ chmod +x /etc/local.d/power-optimize.start
 cat > /etc/local.d/disk-optimize.start << EOL
 #!/bin/sh
 for disk in /dev/sd[a-z] /dev/nvme[0-9]n[0-9]; do
-  if [ -b "\$disk" ]; then
-    if [ "\${disk:0:8}" = "/dev/nvme" ]; then
-      echo mq-deadline > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
+  if [ -b "$disk" ]; then
+    if [ "${disk:0:8}" = "/dev/nvme" ]; then
+      echo mq-deadline > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
     else
-      rotational=\$(cat /sys/block/\$(basename \$disk)/queue/rotational 2>/dev/null || echo 0)
-      if [ "\$rotational" = "1" ]; then
-        hdparm -B 128 -S 24 "\$disk" 2>/dev/null
-        echo bfq > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
+      rotational=$(cat /sys/block/$(basename $disk)/queue/rotational 2>/dev/null || echo 0)
+      if [ "$rotational" = "1" ]; then
+        hdparm -B 128 -S 24 "$disk" 2>/dev/null
+        echo bfq > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
         echo 1500 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null
       else
-        echo mq-deadline > /sys/block/\$(basename \$disk)/queue/scheduler 2>/dev/null
+        echo mq-deadline > /sys/block/$(basename $disk)/queue/scheduler 2>/dev/null
       fi
     fi
   fi
@@ -1228,7 +1240,7 @@ rc-update add crond default 2>/dev/null || echo "Warning: Failed to add crond to
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  qt6-qtbase-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
+  qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
 for pkg in $RUNTIME_DEPS; do
   BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
 done
@@ -1269,7 +1281,7 @@ echo "21. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor."
 echo "22. Check elogind/TLP coordination: systemctl status tlp."
 echo "23. Check themes: Verify qtfm/smplayer use OrchisDark/Light Qt theme."
 echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
-echo "25. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR'."
+echo "25. Check XDG_RUNTIME_DIR: Run 'echo $XDG_RUNTIME_DIR'."
 echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
 echo "27. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors."
 echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|xcur2png|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
