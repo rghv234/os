@@ -63,8 +63,18 @@ if ! command -v qtfm >/dev/null 2>&1; then
   [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
   git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" || { echo "Error: qtfm clone failed" >&2; exit 1; }
   cd qtfm
-  QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
-  $QMAKE_CMD PREFIX=/usr && make && make install || { echo "Warning: qtfm build/install failed" >&2; SKIP_QTFM=1; }
+  # Prefer CMake to avoid qmake dependency issues
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
+    echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
+    QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
+    $QMAKE_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
+      echo "Error: qtfm qmake configuration failed" >&2
+      SKIP_QTFM=1
+    }
+  }
+  if [ -z "$SKIP_QTFM" ]; then
+    make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; }
+  fi
   cd /tmp && rm -rf qtfm
 fi
 
@@ -160,7 +170,7 @@ SOUND_POWER_SAVE_ON_BAT=1
 SOUND_POWER_SAVE_ON_AC=0
 EOL
 
-# Configure sound
+# Configure sound services
 echo "Configuring sound services..."
 for svc in pipewire wireplumber; do
   if ! rc-service $svc status >/dev/null 2>&1; then
