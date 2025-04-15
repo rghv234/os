@@ -141,26 +141,22 @@ fi
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis
 cd /tmp/orchis
-ORCHIS_GTK_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-theme.git")
-if [ -z "$ORCHIS_GTK_TAG" ]; then
-  ORCHIS_GTK_TAG="master"
-  echo "Warning: Could not fetch Orchis GTK tag, falling back to master" >&2
-fi
-git clone --no-checkout https://github.com/vinceliuice/Orchis-theme.git && \
-cd Orchis-theme && \
-git checkout "$ORCHIS_GTK_TAG" -- || {
-  echo "Error: Orchis GTK repo clone or checkout failed." >&2
+git clone --branch master https://github.com/vinceliuice/Orchis-theme.git || {
+  echo "Error: Orchis GTK repo clone failed." >&2
   exit 1
 }
-if ! command -v sassc >/dev/null 2>&1; then
-  echo "Error: sassc is required for Orchis GTK theme compilation" >&2
-  SKIP_ORCHIS_GTK=1
-fi
-./install.sh -d /usr/share/themes -t default -c dark light -s compact --tweaks primary || {
-  echo "Warning: Orchis GTK theme installation failed." >&2
+cd Orchis-theme
+mkdir -p /usr/share/themes
+cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+  echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme." >&2
   SKIP_ORCHIS_GTK=1
 }
-find /usr/share/themes/Orchis-* -type d -name "gnome-shell" -exec rm -rf {} + 2>/dev/null || true
+cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+  echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme." >&2
+  SKIP_ORCHIS_GTK=1
+}
+sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css 2>/dev/null || true
+sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css 2>/dev/null || true
 for res in "1080p" "2k" "4k"; do
   if [ -f "wallpaper/$res.jpg" ]; then
     mkdir -p /usr/share/backgrounds
@@ -183,19 +179,18 @@ rm -rf orchis
 echo "Installing Orchis KDE theme for Qt applications..."
 mkdir -p /tmp/orchis-kde
 cd /tmp/orchis-kde
-ORCHIS_KDE_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-kde.git")
-if [ -z "$ORCHIS_KDE_TAG" ]; then
-  ORCHIS_KDE_TAG="main"
-  echo "Warning: Could not fetch Orchis KDE tag, falling back to main" >&2
-fi
-git clone --no-checkout https://github.com/vinceliuice/Orchis-kde.git && \
-cd Orchis-kde && \
-git checkout "$ORCHIS_KDE_TAG" -- || {
-  echo "Error: Orchis KDE repo clone or checkout failed." >&2
+git clone --branch main https://github.com/vinceliuice/Orchis-kde.git || {
+  echo "Error: Orchis KDE repo clone failed." >&2
   exit 1
 }
-./install.sh || {
-  echo "Warning: Orchis KDE theme installation failed." >&2
+cd Orchis-kde
+mkdir -p /usr/share/color-schemes
+cp -r color-schemes/OrchisDark.colors /usr/share/color-schemes/ 2>/dev/null || {
+  echo "Warning: Failed to copy OrchisDark color scheme." >&2
+  SKIP_ORCHIS_KDE=1
+}
+cp -r color-schemes/OrchisLight.colors /usr/share/color-schemes/ 2>/dev/null || {
+  echo "Warning: Failed to copy OrchisLight color scheme." >&2
   SKIP_ORCHIS_KDE=1
 }
 cd /tmp
@@ -418,22 +413,46 @@ EOL
   }
 fi
 
-# Configure Qt theme
+# Configure Qt theme for qt5ct and qt6ct
 if [ -z "$SKIP_ORCHIS_KDE" ]; then
+  # Configure qt5ct for Qt 5
   mkdir -p "$USER_HOME/.config/qt5ct"
   cat > "$USER_HOME/.config/qt5ct/qt5ct.conf" << EOL
-[Appearance]
-style=fusion
-color_scheme_path=/usr/share/color-schemes/OrchisDark.colors
-icon_theme=Papirus-Dark
-custom_palette=true
-[Palette]
-active-highlight=#8AB4F8
-active-button=#3C4043
-active-window=#202124
-EOL
+  [Appearance]
+  style=fusion
+  color_scheme_path=/usr/share/color-schemes/OrchisDark.colors
+  icon_theme=Papirus-Dark
+  custom_palette=true
+  [Palette]
+  active-highlight=#8AB4F8
+  active-button=#3C4043
+  active-window=#202124
+  EOL
+
+  # Configure qt6ct for Qt 6
+  if [ -z "$SKIP_QT6CT" ] && command -v qt6ct >/dev/null 2>&1; then
+    mkdir -p "$USER_HOME/.config/qt6ct"
+    cat > "$USER_HOME/.config/qt6ct/qt6ct.conf" << EOL
+    [Appearance]
+    style=fusion
+    color_scheme_path=/usr/share/color-schemes/OrchisDark.colors
+    icon_theme=Papirus-Dark
+    custom_palette=true
+    [Palette]
+    active-highlight=#8AB4F8
+    active-button=#3C4043
+    active-window=#202124
+    EOL
+  fi
+
+  # Set environment variables with fallback
   echo "export QT_STYLE_OVERRIDE=fusion" >> "$USER_HOME/.profile"
-  echo "export QT_QPA_PLATFORMTHEME=qt5ct" >> "$USER_HOME/.profile"
+  echo "export QT_QPA_PLATFORMTHEME=qt5ct" >> "$USER_HOME/.profile"  # Default to qt5ct
+  if [ -z "$SKIP_QT6CT" ] && command -v qt6ct >/dev/null 2>&1; then
+    echo "export QT_QPA_PLATFORMTHEME=qt6ct" >> "$USER_HOME/.config/labwc/environment"  # Prefer qt6ct in LabWC session if available
+  fi
+  echo "export QT_QPA_PLATFORMTHEME=\${QT_QPA_PLATFORMTHEME:-qt5ct}" >> "$USER_HOME/.profile"  # Fallback to qt5ct if unset
+  echo "Note: Set QT_QPA_PLATFORMTHEME=qt6ct for Qt 6 apps (e.g., qtfm) if qt6ct is installed, or qt5ct for Qt 5 apps (e.g., smplayer)." >&2
 fi
 
 # Configure gtkgreet
