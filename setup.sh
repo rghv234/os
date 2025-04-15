@@ -72,8 +72,8 @@ if ! command -v smplayer >/dev/null 2>&1; then
   cd /tmp/smplayer
   SMPLAYER_TAG=$(get_latest_tag "https://github.com/smplayer-dev/smplayer.git")
   if [ -z "$SMPLAYER_TAG" ]; then
-    SMPLAYER_TAG="master"
-    echo "Warning: Could not fetch smplayer tag, falling back to master" >&2
+    SMPLAYER_TAG="v23.6.0"  # Fallback to a stable release
+    echo "Warning: Could not fetch smplayer tag, falling back to v23.6.0" >&2
   fi
   git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch "$SMPLAYER_TAG" --single-branch && \
   cd smplayer || {
@@ -88,13 +88,17 @@ if ! command -v smplayer >/dev/null 2>&1; then
     }
   fi
   if [ -z "$SKIP_SMPLAYER" ]; then
-    qmake-qt5 PREFIX=/usr || {
-      echo "Warning: qmake-qt5 configuration failed for smplayer. Skipping." >&2
+    export PATH="/usr/lib/qt5/bin:$PATH"
+    echo "Running qmake-qt5 with PREFIX=/usr..." >&2
+    qmake-qt5 PREFIX=/usr -d > qmake.log 2>&1 || {
+      echo "Warning: qmake-qt5 configuration failed for smplayer. Check qmake.log for details. Skipping." >&2
+      cat qmake.log >&2
       SKIP_SMPLAYER=1
     }
     if [ -z "$SKIP_SMPLAYER" ]; then
-      make PREFIX=/usr || {
-        echo "Warning: smplayer build failed. Skipping." >&2
+      make PREFIX=/usr > make.log 2>&1 || {
+        echo "Warning: smplayer build failed. Check make.log for details. Skipping." >&2
+        cat make.log >&2
         SKIP_SMPLAYER=1
       }
       if [ -z "$SKIP_SMPLAYER" ]; then
