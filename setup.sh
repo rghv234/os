@@ -45,7 +45,7 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
-  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol xdotool"
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool"
 
 # Function to get latest git tag
 get_latest_tag() {
@@ -78,7 +78,7 @@ if ! command -v smplayer >/dev/null 2>&1; then
       echo "Failed to install smplayer" >&2
       SKIP_SMPLAYER=1
     }
-  }
+  fi
   cd /tmp
   rm -rf smplayer
 fi
@@ -132,8 +132,8 @@ if ! command -v qtfm >/dev/null 2>&1; then
         echo "Failed to install qtfm" >&2
         SKIP_QTFM=1
       }
-    }
-  }
+    fi
+  fi
   cd /tmp
   rm -rf qtfm
 fi
@@ -162,6 +162,7 @@ cp src/wallpapers/wallpaper-dark.jpg /usr/share/backgrounds/orchis-wallpaper.jpg
   SKIP_WALLPAPER=1
 }
 cd /tmp
+rm -rf orchis
 
 # Install Orchis KDE theme
 echo "Installing Orchis KDE theme..."
@@ -182,6 +183,7 @@ cd Orchis-kde || {
   SKIP_ORCHIS_KDE=1
 }
 cd /tmp
+rm -rf orchis-kde
 
 # Install Vimix cursor themes (White and Black)
 echo "Installing Vimix cursor themes..."
@@ -202,7 +204,7 @@ cd Vimix-cursors || {
   SKIP_VIMIX=1
 }
 cd /tmp
-rm -rf /tmp/vimix-cursors
+rm -rf vimix-cursors
 
 # Configure Bluetooth
 echo "Configuring Bluetooth..."
@@ -751,7 +753,7 @@ cat > /usr/local/bin/wifi-popup.sh << EOL
 # List Wi-Fi networks
 networks=\$(iwctl station wlan0 scan && iwctl station wlan0 get-networks | grep -v "open" | awk 'NR>4 {print \$1}')
 echo "popup {"
-echo "  label { text = 'Wi-Fi Networks'; font = 'Roboto 12'; atop: center; color = '#FFFFFF'; }"
+echo "  label { text = 'Wi-Fi Networks'; font = 'Roboto 12'; atop: center; color = '#FFFFFF'; }"
 for net in \$networks; do
   echo "  button { text = '\$net'; exec = 'iwctl station wlan0 connect \"\$net\"'; }"
 done
