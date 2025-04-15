@@ -852,8 +852,77 @@ done
 EOL
 chmod +x /etc/local.d/disk-optimize.start
 
-# Configure memory
-echo "vm.swappiness=10\nvm.vfs_cache_pressure=50" > /etc/sysctl.d/99-swappiness.conf
+# ... [Existing script content: optimize_cpu, optimize_gpu, optimize_disk, optimize_battery, etc.]
+
+# Function to optimize memory with zram and zswap
+optimize_memory() {
+    echo "Optimizing memory with zram and zswap..."
+
+    # Check if zram is supported
+    if modprobe -q zram 2>/dev/null; then
+        echo "Setting up zram..."
+        # Configure zram device (1 device, size ~50% of RAM for balance)
+        total_mem=$(free -m | awk '/^Mem:/{print $2}')
+        zram_size=$((total_mem / 2)) # 50% of RAM in MB
+        echo "${zram_size}M" > /sys/block/zram0/disksize
+        mkswap /dev/zram0
+        swapon /dev/zram0 -p 32767 # High priority for zram swap
+
+        # Dynamic compression algorithm selection
+        if [ -f /sys/block/zram0/comp_algorithm ]; then
+            # Prefer lz4 for speed, fallback to zstd for better compression
+            echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null || echo zstd > /sys/block/zram0/comp_algorithm
+        fi
+
+        # Adjust swappiness to favor zram
+        echo 100 > /proc/sys/vm/swappiness
+    else
+        echo "zram not supported by kernel."
+    fi
+
+    # Check if zswap is supported
+    if [ -d /sys/module/zswap ]; then
+        echo "Setting up zswap..."
+        # Enable zswap if not already
+        echo 1 > /sys/module/zswap/parameters/enabled
+        # Set compressor (lz4 for speed)
+        echo lz4 > /sys/module/zswap/parameters/compressor
+        # Set zpool (zbud for simplicity)
+        echo zbud > /sys/module/zswap/parameters/zpool
+        # Limit zswap pool to 20% of RAM
+        echo 20 > /sys/module/zswap/parameters/max_pool_percent
+
+        # Dynamic adjustment based on memory pressure
+        if [ "$(free -m | awk '/^Mem:/{print $3/$2*100}')" -gt 80 ]; then
+            # High memory pressure: increase swappiness and pool size
+            echo 150 > /proc/sys/vm/swappiness
+            echo 30 > /sys/module/zswap/parameters/max_pool_percent
+        fi
+    else
+        echo "zswap not supported by kernel."
+    fi
+
+    # Adjust vm parameters for memory efficiency
+    echo 10 > /proc/sys/vm/vfs_cache_pressure # Prioritize inode/dentry cache
+    echo 500 > /proc/sys/vm/dirty_expire_centisecs # Faster dirty page writeback
+}
+
+# Main optimization function (modified to include memory optimization)
+main() {
+    echo "Starting Setus optimization..."
+    optimize_cpu
+    optimize_gpu
+    optimize_disk
+    optimize_battery
+    optimize_memory # New addition
+    echo "Optimization complete."
+}
+
+# Trap to reset zram on exit (if needed)
+trap 'swapoff /dev/zram0 2>/dev/null; modprobe -r zram 2>/dev/null' EXIT
+
+# Run main
+main
 
 # Configure udev rules
 cat > /etc/udev/rules.d/90-power-optimize.rules << EOL
