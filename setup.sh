@@ -80,20 +80,29 @@ if ! command -v smplayer >/dev/null 2>&1; then
     echo "Error: smplayer repo clone failed." >&2
     exit 1
   }
-  qmake-qt5 PREFIX=/usr || {
-    echo "Warning: smplayer qmake configuration failed. Skipping." >&2
-    SKIP_SMPLAYER=1
-  }
+  if ! command -v qmake-qt5 >/dev/null 2>&1; then
+    echo "Error: qmake-qt5 not found. Installing Qt5 qmake..." >&2
+    apk add qt5-qmake || {
+      echo "Failed to install qt5-qmake. Skipping smplayer." >&2
+      SKIP_SMPLAYER=1
+    }
+  fi
   if [ -z "$SKIP_SMPLAYER" ]; then
-    make PREFIX=/usr || {
-      echo "Warning: smplayer build failed. Skipping." >&2
+    qmake-qt5 PREFIX=/usr || {
+      echo "Warning: qmake-qt5 configuration failed for smplayer. Skipping." >&2
       SKIP_SMPLAYER=1
     }
     if [ -z "$SKIP_SMPLAYER" ]; then
-      make install PREFIX=/usr || {
-        echo "Failed to install smplayer" >&2
+      make PREFIX=/usr || {
+        echo "Warning: smplayer build failed. Skipping." >&2
         SKIP_SMPLAYER=1
       }
+      if [ -z "$SKIP_SMPLAYER" ]; then
+        make install PREFIX=/usr || {
+          echo "Failed to install smplayer" >&2
+          SKIP_SMPLAYER=1
+        }
+      fi
     fi
   fi
   cd /tmp
