@@ -507,7 +507,7 @@ if [ -z "$SKIP_ORCHIS_KDE" ]; then
   active-highlight=#8AB4F8
   active-button=#3C4043
   active-window=#202124
-  EOL
+EOL
 
   # Configure qt6ct for Qt 6
   if [ -z "$SKIP_QT6CT" ] && command -v qt6ct >/dev/null 2>&1; then
