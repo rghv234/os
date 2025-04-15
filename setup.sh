@@ -4,7 +4,6 @@
 set -e
 
 # Initialize skip flags
-SKIP_SMPLAYER=""
 SKIP_WLSLEEPHANDLER=""
 SKIP_QTFM=""
 SKIP_ORCHIS_GTK=""
@@ -39,14 +38,13 @@ apk add --no-cache \
   tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  qt6-qtbase-dev qt6-qttools-dev xcur2png \
+  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr \
   sassc qt5ct papirus-icon-theme \
   bluez bluez-openrc blueman linux-firmware \
   mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
-  xdotool qt6-qtsvg-dev qt6-qt5compat-dev bash || {
+  xdotool qt6-qtsvg-dev qt6-qt5compat-dev bash celluloid || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -56,7 +54,7 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
-  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool"
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool celluloid"
 
 # Function to get latest git tag
 get_latest_tag() {
@@ -64,60 +62,6 @@ get_latest_tag() {
   git ls-remote --tags "$repo_url" | grep -v "{}" | grep -v "release-" | \
     sed 's|.*/||' | sort -V | tail -1 || echo ""
 }
-
-# Install smplayer from source (Qt5 compatible)
-if ! command -v smplayer >/dev/null 2>&1; then
-  echo "Building smplayer..."
-  mkdir -p /tmp/smplayer
-  cd /tmp/smplayer
-  SMPLAYER_TAG=$(get_latest_tag "https://github.com/smplayer-dev/smplayer.git")
-  if [ -z "$SMPLAYER_TAG" ]; then
-    SMPLAYER_TAG="v23.6.0"  # Fallback to a stable release
-    echo "Warning: Could not fetch smplayer tag, falling back to v23.6.0" >&2
-  fi
-  git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch "$SMPLAYER_TAG" --single-branch && \
-  cd smplayer || {
-    echo "Error: smplayer repo clone failed." >&2
-    exit 1
-  }
-  if ! command -v qmake-qt5 >/dev/null 2>&1; then
-    echo "Error: qmake-qt5 not found. Installing Qt5 qmake..." >&2
-    apk add qt5-qmake || {
-      echo "Failed to install qt5-qmake. Skipping smplayer." >&2
-      SKIP_SMPLAYER=1
-    }
-  fi
-  if [ -z "$SKIP_SMPLAYER" ]; then
-    export PATH="/usr/lib/qt5/bin:$PATH"
-    echo "Running qmake-qt5 with PREFIX=/usr..." >&2
-    qmake-qt5 PREFIX=/usr > qmake.log 2>&1 || {
-      echo "Error: qmake-qt5 configuration failed for smplayer. Check qmake.log:" >&2
-      cat qmake.log >&2
-      # Attempt to install missing Qt5 dependencies
-      apk add qt5-qtmultimedia-dev qt5-qtsvg-dev qt5-qtx11extras-dev || true
-      qmake-qt5 PREFIX=/usr > qmake.log 2>&1 || {
-        echo "Error: qmake-qt5 still failed after adding dependencies. Check qmake.log for details. Skipping smplayer." >&2
-        cat qmake.log >&2
-        SKIP_SMPLAYER=1
-      }
-    }
-    if [ -z "$SKIP_SMPLAYER" ]; then
-      make PREFIX=/usr > make.log 2>&1 || {
-        echo "Error: smplayer build failed. Check make.log:" >&2
-        cat make.log >&2
-        SKIP_SMPLAYER=1
-      }
-      if [ -z "$SKIP_SMPLAYER" ]; then
-        make install PREFIX=/usr || {
-          echo "Failed to install smplayer" >&2
-          SKIP_SMPLAYER=1
-        }
-      fi
-    fi
-  fi
-  cd /tmp
-  rm -rf smplayer
-fi
 
 # Install wlsleephandler-rs
 echo "Installing wlsleephandler-rs..."
@@ -513,20 +457,8 @@ EOL
   }
 fi
 
-# Configure Qt theme for qt5ct and qt6ct
+# Configure Qt theme for qt6ct
 if [ -z "$SKIP_ORCHIS_KDE" ]; then
-  mkdir -p "$USER_HOME/.config/qt5ct"
-  tee "$USER_HOME/.config/qt5ct/qt5ct.conf" << EOL
-[Appearance]
-style=fusion
-color_scheme_path=/usr/share/color-schemes/OrchisDark.colors
-icon_theme=Papirus-Dark
-custom_palette=true
-[Palette]
-active-highlight=#8AB4F8
-active-button=#3C4043
-active-window=#202124
-EOL
   if command -v qt6ct >/dev/null 2>&1; then
     mkdir -p "$USER_HOME/.config/qt6ct"
     tee "$USER_HOME/.config/qt6ct/qt6ct.conf" << EOL
@@ -544,12 +476,11 @@ EOL
     SKIP_QT6CT=1
   fi
   echo "export QT_STYLE_OVERRIDE=fusion" >> "$USER_HOME/.profile"
-  echo "export QT_QPA_PLATFORMTHEME=qt5ct" >> "$USER_HOME/.profile"
   if [ -z "$SKIP_QT6CT" ]; then
     echo "export QT_QPA_PLATFORMTHEME=qt6ct" >> "$USER_HOME/.config/labwc/environment"
   fi
-  echo "export QT_QPA_PLATFORMTHEME=\${QT_QPA_PLATFORMTHEME:-qt5ct}" >> "$USER_HOME/.profile"
-  echo "Note: Set QT_QPA_PLATFORMTHEME=qt6ct for Qt 6 apps (e.g., qtfm) if qt6ct is installed, or qt5ct for Qt 5 apps (e.g., smplayer)." >&2
+  echo "export QT_QPA_PLATFORMTHEME=\${QT_QPA_PLATFORMTHEME:-}" >> "$USER_HOME/.profile"
+  echo "Note: Set QT_QPA_PLATFORMTHEME=qt6ct for Qt 6 apps (e.g., qtfm) if qt6ct is installed." >&2
 fi
 
 # Configure gtkgreet
@@ -700,7 +631,7 @@ tee "$USER_HOME/.config/labwc/menu.xml" << EOL
     <item label="Terminal"><action name="Execute"><execute>foot</execute></action></item>
     <item label="Browser"><action name="Execute"><execute>badwolf</execute></action></item>
     $( [ -z "$SKIP_QTFM" ] && echo '<item label="Files"><action name="Execute"><execute>qtfm</execute></action></item>' || true )
-    $( [ -z "$SKIP_SMPLAYER" ] && echo '<item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>' || true )
+    <item label="Player"><action name="Execute"><execute>celluloid</execute></action></item>
     <item label="Drawing"><action name="Execute"><execute>drawing</execute></action></item>
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
     <item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>
@@ -742,7 +673,7 @@ exec = wofi --show drun
 
 [TaskBar]
 icon_size = 32
-pins = foot badwolf qtfm smplayer drawing mupdf blueman-manager pavucontrol
+pins = foot badwolf qtfm celluloid drawing mupdf blueman-manager pavucontrol
 
 [Network]
 interval = 10
@@ -944,7 +875,6 @@ chmod +x /usr/local/bin/bluetooth-toggle.sh
 tee /usr/local/bin/toggle-theme.sh << EOL
 #!/bin/sh
 CONFIG="$HOME/.config/gtk-3.0/settings.ini"
-QTCONFIG="$HOME/.config/qt5ct/qt5ct.conf"
 SFWBAR_CSS="$HOME/.config/sfwbar/sfwbar.css"
 WOFI_CSS="$HOME/.config/wofi/style.css"
 MAKO_CONFIG="$HOME/.config/mako/config"
@@ -957,10 +887,6 @@ if grep -q "gtk-theme-name=Orchis-Dark" "$CONFIG"; then
   sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-White/gtk-cursor-theme-name=Vimix-Black/' "$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisLight.colors/' "$QTCONFIG"
-  sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "$QTCONFIG"
-  sed -i 's/active-window=#202124/active-window=#F1F3F4/' "$QTCONFIG"
-  sed -i 's/active-highlight=#8AB4F8/active-highlight="$DYNAMIC_COLOR"/' "$QTCONFIG"
   sed -i 's/background: rgba(32,33,36,0.7);/background: rgba(241,243,244,0.7);/' "$SFWBAR_CSS"
   sed -i 's/background: rgba(48,49,52,0.9);/background: rgba(255,255,255,0.9);/' "$SFWBAR_CSS"
   sed -i 's/color: #FFFFFF;/color: #202124;/' "$SFWBAR_CSS"
@@ -986,10 +912,6 @@ else
   sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-Black/gtk-cursor-theme-name=Vimix-White/' "$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/color-schemes\/OrchisDark.colors/' "$QTCONFIG"
-  sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "$QTCONFIG"
-  sed -i 's/active-window=#F1F3F4/active-window=#202124/' "$QTCONFIG"
-  sed -i 's/active-highlight=#[0-9A-F]\{6\}/active-highlight="$DYNAMIC_COLOR"/' "$QTCONFIG"
   sed -i 's/background: rgba(241,243,244,0.7);/background: rgba(32,33,36,0.7);/' "$SFWBAR_CSS"
   sed -i 's/background: rgba(255,255,255,0.9);/background: rgba(48,49,52,0.9);/' "$SFWBAR_CSS"
   sed -i 's/color: #202124;/color: #FFFFFF;/' "$SFWBAR_CSS"
@@ -1252,8 +1174,7 @@ rc-update add crond default || echo "Warning: Failed to add crond to boot servic
 # Cleanup
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
+  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
 for pkg in $RUNTIME_DEPS; do
   BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
 done
@@ -1271,9 +1192,9 @@ echo "======================================================================"
 echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management."
 echo "To verify:"
 echo "1. Reboot and login via gtkgreet (labwc session)."
-echo "2. Test sound: play a file in smplayer."
+echo "2. Test sound: play a file in celluloid."
 echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device."
-echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected."
+echo "4. Test Bluetooth audio: play a file in celluloid with Bluetooth device connected."
 echo "5. Test qtfm: open qtfm, verify image/video thumbnails."
 echo "6. Test clipboard: copy text, run 'wl-paste' to verify."
 echo "7. Test screenshot: press PrtSc or select 'Screenshot' from wofi."
@@ -1292,10 +1213,10 @@ echo "19. Idle 2 minutes to confirm lock, 5 minutes for suspend."
 echo "20. Check disk: cat /sys/block/sda/queue/scheduler."
 echo "21. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor."
 echo "22. Check elogind/TLP coordination: systemctl status tlp."
-echo "23. Check themes: Verify qtfm/smplayer use OrchisDark/Light Qt theme."
+echo "23. Check themes: Verify qtfm/celluloid use OrchisDark/Light Qt theme."
 echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
 echo "25. Check XDG_RUNTIME_DIR: Run 'echo $XDG_RUNTIME_DIR'."
 echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
-echo "27. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors."
-echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|xcur2png|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
+echo "27. Check source versions: qtfm, Orchis themes, Vimix cursors."
+echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|xcur2png|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
 echo "======================================================================"
