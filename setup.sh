@@ -230,28 +230,6 @@ rc-update add alsa default
 alsactl init
 echo "defaults.pcm.card 0\ndefaults.ctl.card 0" > /etc/asound.conf
 
-# Fix ALSA audio configuration for legacy hardware
-echo "Configuring ALSA audio for ENS1371/CS4297A..."
-apk add alsa-utils linux-firmware || { echo "Error: Failed to install ALSA utilities or firmware" >&2; exit 1; }
-modprobe snd-ens1371 || { echo "Warning: snd-ens1371 module not found, using generic audio" >&2; }
-# Create basic asound.conf if UCM is missing
-if [ ! -d /usr/share/alsa/ucm ] || [ -z "$(ls /usr/share/alsa/ucm)" ]; then
-  echo "Creating basic asound.conf for generic audio..."
-  cat <<EOF >/etc/asound.conf
-pcm.!default {
-  type hw
-  card 0
-}
-ctl.!default {
-  type hw
-  card 0
-}
-EOF
-  echo "asound.conf created. Restart audio services or reboot if needed."
-fi
-# Verify audio
-aplay -l || { echo "Error: Audio hardware not detected" >&2; exit 1; }
-
 # Configure services
 echo "Configuring session services..."
 for svc in elogind dbus udev greetd polkit local crond; do
