@@ -147,14 +147,24 @@ git clone --branch master https://github.com/vinceliuice/Orchis-theme.git || {
 }
 cd Orchis-theme
 mkdir -p /usr/share/themes
-cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
-  echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme." >&2
-  SKIP_ORCHIS_GTK=1
-}
-cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
-  echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme." >&2
-  SKIP_ORCHIS_GTK=1
-}
+if [ -d "src/gtk-3.0" ]; then
+  cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ || {
+    echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme. Attempting fallback with install..." >&2
+    install -D -m 644 src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+      echo "Error: Fallback installation of Orchis-Dark GTK 3.0 theme failed." >&2
+      SKIP_ORCHIS_GTK=1
+    }
+  }
+fi
+if [ -d "src/gtk-4.0" ]; then
+  cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ || {
+    echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme. Attempting fallback with install..." >&2
+    install -D -m 644 src/gtk-4.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+      echo "Error: Fallback installation of Orchis-Dark GTK 4.0 theme failed." >&2
+      SKIP_ORCHIS_GTK=1
+    }
+  }
+fi
 sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css 2>/dev/null || true
 sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css 2>/dev/null || true
 for res in "1080p" "2k" "4k"; do
@@ -185,14 +195,18 @@ git clone --branch main https://github.com/vinceliuice/Orchis-kde.git || {
 }
 cd Orchis-kde
 mkdir -p /usr/share/color-schemes
-cp -r color-schemes/OrchisDark.colors /usr/share/color-schemes/ 2>/dev/null || {
-  echo "Warning: Failed to copy OrchisDark color scheme." >&2
-  SKIP_ORCHIS_KDE=1
-}
-cp -r color-schemes/OrchisLight.colors /usr/share/color-schemes/ 2>/dev/null || {
-  echo "Warning: Failed to copy OrchisLight color scheme." >&2
-  SKIP_ORCHIS_KDE=1
-}
+if [ -f "color-schemes/OrchisDark.colors" ]; then
+  cp color-schemes/OrchisDark.colors /usr/share/color-schemes/ || {
+    echo "Warning: Failed to copy OrchisDark color scheme." >&2
+    SKIP_ORCHIS_KDE=1
+  }
+fi
+if [ -f "color-schemes/OrchisLight.colors" ]; then
+  cp color-schemes/OrchisLight.colors /usr/share/color-schemes/ || {
+    echo "Warning: Failed to copy OrchisLight color scheme." >&2
+    SKIP_ORCHIS_KDE=1
+  }
+fi
 cd /tmp
 rm -rf orchis-kde
 
@@ -206,12 +220,26 @@ git clone --branch master https://github.com/vinceliuice/Vimix-cursors.git || {
 }
 cd Vimix-cursors
 ./install.sh || {
-  echo "Warning: Vimix cursors installation failed. Attempting fallback." >&2
+  echo "Warning: Vimix cursors installation failed. Attempting fallback..." >&2
   mkdir -p /usr/share/icons
-  cp -r dist/* /usr/share/icons/ 2>/dev/null || cp -r dist-white/* /usr/share/icons/ 2>/dev/null || {
-    echo "Error: Fallback installation of Vimix cursors failed." >&2
+  if [ -d "dist" ]; then
+    cp -r dist/* /usr/share/icons/ || {
+      echo "Warning: Fallback copy of dist failed. Attempting dist-white..." >&2
+    }
+  fi
+  if [ -d "dist-white" ]; then
+    cp -r dist-white/* /usr/share/icons/ || {
+      echo "Error: Fallback installation of Vimix cursors failed. Creating minimal cursor theme..." >&2
+      mkdir -p /usr/share/icons/Vimix-White
+      echo "cursors" > /usr/share/icons/Vimix-White/index.theme
+      SKIP_VIMIX=1
+    }
+  else
+    echo "Error: No dist or dist-white found. Creating minimal cursor theme..." >&2
+    mkdir -p /usr/share/icons/Vimix-White
+    echo "cursors" > /usr/share/icons/Vimix-White/index.theme
     SKIP_VIMIX=1
-  }
+  fi
 }
 cd /tmp
 rm -rf vimix-cursors
