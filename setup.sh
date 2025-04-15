@@ -30,13 +30,13 @@ apk add --no-cache \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  qt6-qtbase-dev xcur2png \
+  qt6-qtbase-dev qt6-qttools-dev xcur2png \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr \
   sassc qt5ct papirus-icon-theme \
   bluez bluez-openrc blueman linux-firmware \
   mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
-  xdotool qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev || {
+  xdotool qt6-qtsvg-dev qt6-qt5compat-dev bash || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -147,26 +147,31 @@ git clone --branch master https://github.com/vinceliuice/Orchis-theme.git || {
 }
 cd Orchis-theme
 mkdir -p /usr/share/themes
-if [ -d "src/gtk-3.0" ]; then
-  cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ || {
-    echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme. Attempting fallback with install..." >&2
-    install -D -m 644 src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
-      echo "Error: Fallback installation of Orchis-Dark GTK 3.0 theme failed." >&2
-      SKIP_ORCHIS_GTK=1
+if [ -d "src" ]; then
+  if [ -d "src/gtk-3.0" ]; then
+    cp -r src/gtk-3.0 /usr/share/themes/Orchis-Dark/ || {
+      echo "Warning: Failed to copy Orchis-Dark GTK 3.0 theme. Attempting fallback with install..." >&2
+      install -D -m 644 src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+        echo "Error: Fallback installation of Orchis-Dark GTK 3.0 theme failed." >&2
+        SKIP_ORCHIS_GTK=1
+      }
     }
-  }
-fi
-if [ -d "src/gtk-4.0" ]; then
-  cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ || {
-    echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme. Attempting fallback with install..." >&2
-    install -D -m 644 src/gtk-4.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
-      echo "Error: Fallback installation of Orchis-Dark GTK 4.0 theme failed." >&2
-      SKIP_ORCHIS_GTK=1
+  fi
+  if [ -d "src/gtk-4.0" ]; then
+    cp -r src/gtk-4.0 /usr/share/themes/Orchis-Dark/ || {
+      echo "Warning: Failed to copy Orchis-Dark GTK 4.0 theme. Attempting fallback with install..." >&2
+      install -D -m 644 src/gtk-4.0/* /usr/share/themes/Orchis-Dark/ 2>/dev/null || {
+        echo "Error: Fallback installation of Orchis-Dark GTK 4.0 theme failed." >&2
+        SKIP_ORCHIS_GTK=1
+      }
     }
-  }
+  fi
+  sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css 2>/dev/null || true
+  sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css 2>/dev/null || true
+else
+  echo "Warning: src directory not found in Orchis-theme. Skipping theme installation." >&2
+  SKIP_ORCHIS_GTK=1
 fi
-sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-3.0/gtk.css 2>/dev/null || true
-sed -i 's/gtk-theme-name=.*/gtk-theme-name=Orchis-Dark/' src/gtk-4.0/gtk.css 2>/dev/null || true
 for res in "1080p" "2k" "4k"; do
   if [ -f "wallpaper/$res.jpg" ]; then
     mkdir -p /usr/share/backgrounds
@@ -219,28 +224,35 @@ git clone --branch master https://github.com/vinceliuice/Vimix-cursors.git || {
   exit 1
 }
 cd Vimix-cursors
-./install.sh || {
-  echo "Warning: Vimix cursors installation failed. Attempting fallback..." >&2
-  mkdir -p /usr/share/icons
-  if [ -d "dist" ]; then
-    cp -r dist/* /usr/share/icons/ || {
-      echo "Warning: Fallback copy of dist failed. Attempting dist-white..." >&2
-    }
-  fi
-  if [ -d "dist-white" ]; then
-    cp -r dist-white/* /usr/share/icons/ || {
-      echo "Error: Fallback installation of Vimix cursors failed. Creating minimal cursor theme..." >&2
+if [ -f "install.sh" ]; then
+  /bin/bash install.sh || {
+    echo "Warning: Vimix cursors installation failed with install.sh. Attempting fallback..." >&2
+    mkdir -p /usr/share/icons
+    if [ -d "dist" ]; then
+      cp -r dist/* /usr/share/icons/ || {
+        echo "Warning: Fallback copy of dist failed. Attempting dist-white..." >&2
+      }
+    fi
+    if [ -d "dist-white" ]; then
+      cp -r dist-white/* /usr/share/icons/ || {
+        echo "Error: Fallback installation of Vimix cursors failed. Creating minimal cursor theme..." >&2
+        mkdir -p /usr/share/icons/Vimix-White
+        echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
+        SKIP_VIMIX=1
+      }
+    else
+      echo "Error: No dist or dist-white found. Creating minimal cursor theme..." >&2
       mkdir -p /usr/share/icons/Vimix-White
-      echo "cursors" > /usr/share/icons/Vimix-White/index.theme
+      echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
       SKIP_VIMIX=1
-    }
-  else
-    echo "Error: No dist or dist-white found. Creating minimal cursor theme..." >&2
-    mkdir -p /usr/share/icons/Vimix-White
-    echo "cursors" > /usr/share/icons/Vimix-White/index.theme
-    SKIP_VIMIX=1
-  fi
-}
+    fi
+  }
+else
+  echo "Error: install.sh not found in Vimix-cursors. Creating minimal cursor theme..." >&2
+  mkdir -p /usr/share/icons/Vimix-White
+  echo "[Icon Theme]\nName=Vimix-White\nComment=Minimal Vimix cursor theme\nInherits=default" > /usr/share/icons/Vimix-White/index.theme
+  SKIP_VIMIX=1
+fi
 cd /tmp
 rm -rf vimix-cursors
 
@@ -286,10 +298,12 @@ EOL
 # Configure sound
 echo "Configuring sound services..."
 if ! rc-service pipewire status >/dev/null 2>&1; then
-  rc-service pipewire start 2>/dev/null || echo "Warning: Failed to start pipewire service"
+  rc-service pipewire start || echo "Warning: Failed to start pipewire service" >&2
+  rc-update add pipewire default 2>/dev/null || echo "Warning: Failed to add pipewire to boot services" >&2
 fi
 if ! rc-service wireplumber status >/dev/null 2>&1; then
-  rc-service wireplumber start 2>/dev/null || echo "Warning: Failed to start wireplumber service"
+  rc-service wireplumber start || echo "Warning: Failed to start wireplumber service" >&2
+  rc-update add wireplumber default 2>/dev/null || echo "Warning: Failed to add wireplumber to boot services" >&2
 fi
 rc-update add alsa default 2>/dev/null || echo "Warning: Failed to add alsa to boot services"
 alsactl init 2>/dev/null || true
@@ -375,6 +389,32 @@ addgroup "$USER_NAME" audio 2>/dev/null || true
 addgroup "$USER_NAME" bluetooth 2>/dev/null || true
 addgroup "$USER_NAME" pipewire 2>/dev/null || true
 
+# Configure GTK theme
+if [ -z "$SKIP_ORCHIS_GTK" ]; then
+  cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
+[Settings]
+gtk-theme-name=Orchis-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-cursor-theme-name=Vimix-White
+gtk-font-name=Roboto 10
+gtk-application-prefer-dark-theme=true
+gtk-button-images=true
+gtk-menu-images=true
+EOL
+  cat > "$USER_HOME/.config/gtk-4.0/settings.ini" << EOL
+[Settings]
+gtk-theme-name=Orchis-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-cursor-theme-name=Vimix-White
+gtk-font-name=Roboto 10
+gtk-application-prefer-dark-theme=true
+gtk-button-images=true
+gtk-menu-images=true
+EOL
+  ln -sf /usr/share/themes/Orchis-Dark/gtk-4.0 "$USER_HOME/.config/gtk-4.0" || {
+    echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
+  }
+fi
 # Configure wlsleephandler-rs or fallback
 if [ -z "$SKIP_WLSLEEPHANDLER" ] && command -v wlsleephandler-rs >/dev/null 2>&1; then
   echo "Configuring wlsleephandler-rs..."
