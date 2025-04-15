@@ -205,20 +205,18 @@ rm -rf orchis-kde
 echo "Installing Vimix cursor themes..."
 mkdir -p /tmp/vimix-cursors
 cd /tmp/vimix-cursors
-VIMIX_TAG=$(get_latest_tag "https://github.com/vinceliuice/Vimix-cursors.git")
-if [ -z "$VIMIX_TAG" ]; then
-  VIMIX_TAG="master"
-  echo "Warning: Could not fetch Vimix cursors tag, forcing checkout to master" >&2
-fi
-git clone --no-checkout https://github.com/vinceliuice/Vimix-cursors.git && \
-cd Vimix-cursors && \
-git checkout "$VIMIX_TAG" -- || {
-  echo "Error: Vimix cursors repo clone or checkout failed." >&2
+git clone --branch master https://github.com/vinceliuice/Vimix-cursors.git || {
+  echo "Error: Vimix cursors repo clone failed." >&2
   exit 1
 }
+cd Vimix-cursors
 ./install.sh || {
-  echo "Warning: Vimix cursors installation failed." >&2
-  SKIP_VIMIX=1
+  echo "Warning: Vimix cursors installation failed. Attempting fallback." >&2
+  mkdir -p /usr/share/icons
+  cp -r dist/* /usr/share/icons/ 2>/dev/null || cp -r dist-white/* /usr/share/icons/ 2>/dev/null || {
+    echo "Error: Fallback installation of Vimix cursors failed." >&2
+    SKIP_VIMIX=1
+  }
 }
 cd /tmp
 rm -rf vimix-cursors
