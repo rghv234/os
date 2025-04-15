@@ -29,13 +29,13 @@ apk add --no-cache \
   mupdf mako lite-xl image-roll drawing font-roboto wofi \
   greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
-  clipman grim slurp xdg-desktop-portal-wlr qt5ct qt6ct papirus-icon-theme \
+  clipman grim slurp xdg-desktop-portal-wlr qt5ct papirus-icon-theme \
   bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
   xdotool bash celluloid \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
-  cmake g++ qt6-qtbase-dev qt6-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
+  cmake g++ qt6-qtbase-dev qt6-qttools-dev qt5-qtbase-dev qt5-qttools-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   sassc qt6-qtsvg-dev qt6-qt5compat-dev || { echo "Failed to install packages" >&2; exit 1; }
-
+  
 # Define runtime dependencies
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
@@ -60,7 +60,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
   mkdir -p /tmp/qtfm && cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
-  [ -z "$QTFM_TAG" ] && QTFM_TAG="master"  # Default to master if no tag is found
+  [ -z "$QTFM_TAG" ] && QTFM_TAG="master"  # Default to master
   echo "Cloning qtfm with tag/branch: $QTFM_TAG..."
   # Remove existing qtfm directory if it exists and is not empty
   [ -d qtfm ] && { echo "Removing existing qtfm directory..." >&2; rm -rf qtfm || { echo "Error: Failed to remove existing qtfm directory" >&2; exit 1; }; }
@@ -87,17 +87,29 @@ if ! command -v qtfm >/dev/null 2>&1; then
     fi
     echo "Found CMakeLists.txt in master branch, proceeding with build..."
   fi
+  # Detect Qt version and configure accordingly
+  if command -v qmake-qt5 >/dev/null 2>&1; then
+    QT_CMD="qmake-qt5"
+    CMAKE_PREFIX="/usr/lib/qt5"
+  elif command -v qmake-qt6 >/dev/null 2>&1; then
+    QT_CMD="qmake-qt6"
+    CMAKE_PREFIX="/usr/lib/qt6"
+  else
+    echo "Error: Neither qmake-qt5 nor qmake-qt6 found" >&2
+    exit 1
+  fi
+  export CMAKE_PREFIX_PATH="$CMAKE_PREFIX:$CMAKE_PREFIX_PATH"
   command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -CMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
     echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
-    QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
-    $QMAKE_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
+    $QT_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
       echo "Error: qtfm qmake configuration failed" >&2
       SKIP_QTFM=1
+      exit 1  # Ensure script exits on failure
     }
   }
   if [ -z "$SKIP_QTFM" ]; then
-    make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; }
+    make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; exit 1; }
   fi
   cd /tmp && rm -rf qtfm
 fi
