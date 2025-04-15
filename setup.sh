@@ -34,7 +34,7 @@ apk add --no-cache \
   clipman grim slurp xdg-desktop-portal-wlr \
   sassc qt5ct papirus-icon-theme \
   bluez bluez-openrc blueman linux-firmware \
-  mesa-dri-gallium xwayland wl-clipboard wayland-utils pam_rundir pavucontrol \
+  mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
   xdotool || {
   echo "Failed to install required packages" >&2
   exit 1
