@@ -45,7 +45,7 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
-  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool qt6-qtbase-dev qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev"
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool"
 
 # Function to get latest git tag
 get_latest_tag() {
@@ -61,7 +61,7 @@ if ! command -v smplayer >/dev/null 2>&1; then
   cd /tmp/smplayer
   SMPLAYER_TAG=$(get_latest_tag "https://github.com/smplayer-dev/smplayer.git")
   if [ -z "$SMPLAYER_TAG" ]; then
-    SMPLAYER_TAG="master"  # Fallback to master as per hint
+    SMPLAYER_TAG="master"
     echo "Warning: Could not fetch smplayer tag, falling back to master" >&2
   fi
   git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch "$SMPLAYER_TAG" --single-branch && \
@@ -103,31 +103,17 @@ if ! command -v qtfm >/dev/null 2>&1; then
   cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
   if [ -z "$QTFM_TAG" ]; then
-    QTFM_TAG="master"  # Fallback to master as per hint
-    echo "Warning: Could not fetch qtfm tag, falling back to master" >&2
+    QTFM_TAG="main"
+    echo "Warning: Could not fetch qtfm tag, falling back to main" >&2
   fi
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch && \
-  cd qtfm || {
+  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch || {
     echo "Error: qtfm repo clone failed." >&2
     exit 1
   }
-  # Use CMake with Qt6
-  mkdir build
-  cd build
-  cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_INSTALL_LIBDIR=lib \
-    -DCMAKE_INSTALL_DOCDIR=share/doc/qtfm \
-    -DCMAKE_INSTALL_MANDIR=share/man \
-    -DENABLE_MAGICK=TRUE \
-    -DENABLE_FFMPEG=TRUE \
-    -DENABLE_DBUS=TRUE \
-    -DENABLE_UDISKS=TRUE \
-    -DENABLE_TRAY=FALSE \
-    -DCMAKE_CXX_STANDARD=17 \
-    -DCMAKE_CXX_FLAGS="-fpermissive" || {
-    echo "Warning: qtfm CMake configuration failed." >&2
+  cd qtfm
+  # Use qmake instead of CMake due to CMakeLists.txt issues
+  qmake-qt6 PREFIX=/usr || {
+    echo "Warning: qtfm qmake configuration failed." >&2
     SKIP_QTFM=1
   }
   if [ -z "$SKIP_QTFM" ]; then
@@ -146,31 +132,33 @@ if ! command -v qtfm >/dev/null 2>&1; then
   rm -rf qtfm
 fi
 
-# Install Orchis GTK theme and wallpaper (using install.sh, excluding GNOME Shell)
+# Install Orchis GTK theme and wallpaper
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis
 cd /tmp/orchis
 ORCHIS_GTK_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-theme.git")
 if [ -z "$ORCHIS_GTK_TAG" ]; then
-  ORCHIS_GTK_TAG="master"  # Fallback to master as per hint
-  echo "Warning: Could not fetch Orchis GTK tag, falling back to master" >&2
+  ORCHIS_GTK_TAG="main"
+  echo "Warning: Could not fetch Orchis GTK tag, falling back to main" >&2
 fi
-git clone https://github.com/vinceliuice/Orchis-theme.git --depth 1 --branch "$ORCHIS_GTK_TAG" --single-branch && \
-cd Orchis-theme || {
-  echo "Error: Orchis GTK repo clone failed." >&2
+git clone --no-checkout https://github.com/vinceliuice/Orchis-theme.git && \
+cd Orchis-theme && \
+git checkout "$ORCHIS_GTK_TAG" -- || {
+  echo "Error: Orchis GTK repo clone or checkout failed." >&2
   exit 1
 }
 if ! command -v sassc >/dev/null 2>&1; then
   echo "Error: sassc is required for Orchis GTK theme compilation" >&2
   SKIP_ORCHIS_GTK=1
 fi
-./install.sh -d "$USER_HOME/.themes" -t default -c dark light -s compact --tweaks primary || {
+mkdir -p /usr/share/themes
+./install.sh -d /usr/share/themes -t default -c dark light -s compact --tweaks primary || {
   echo "Warning: Orchis GTK theme installation failed." >&2
   SKIP_ORCHIS_GTK=1
 }
-# Remove GNOME Shell files to avoid GNOME specificity
-find "$USER_HOME/.themes/Orchis-*" -type d -name "gnome-shell" -exec rm -rf {} + 2>/dev/null || true
-# Check for wallpaper and use appropriate file
+# Remove GNOME Shell files
+find /usr/share/themes/Orchis-* -type d -name "gnome-shell" -exec rm -rf {} + 2>/dev/null || true
+# Install wallpaper
 if [ -f "wallpaper/1080p.jpg" ]; then
   mkdir -p /usr/share/backgrounds
   cp wallpaper/1080p.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
@@ -197,23 +185,23 @@ fi
 cd /tmp
 rm -rf orchis
 
-# Install Orchis KDE theme for Qt applications (manual extraction, bypassing install.sh)
+# Install Orchis KDE theme for Qt applications
 echo "Installing Orchis KDE theme for Qt applications..."
 mkdir -p /tmp/orchis-kde
 cd /tmp/orchis-kde
 ORCHIS_KDE_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-kde.git")
 if [ -z "$ORCHIS_KDE_TAG" ]; then
-  ORCHIS_KDE_TAG="main"  # Fallback to main as per hint
+  ORCHIS_KDE_TAG="main"
   echo "Warning: Could not fetch Orchis KDE tag, falling back to main" >&2
 fi
-git clone https://github.com/vinceliuice/Orchis-kde.git --depth 1 --branch "$ORCHIS_KDE_TAG" --single-branch && \
-cd Orchis-kde || {
-  echo "Error: Orchis KDE repo clone failed." >&2
+git clone --no-checkout https://github.com/vinceliuice/Orchis-kde.git && \
+cd Orchis-kde && \
+git checkout "$ORCHIS_KDE_TAG" -- || {
+  echo "Error: Orchis KDE repo clone or checkout failed." >&2
   exit 1
 }
-QT_THEME_DIR="$USER_HOME/.themes/Orchis"
-mkdir -p "$QT_THEME_DIR"
-cp -r colors "$QT_THEME_DIR/" || {
+mkdir -p /usr/share/themes/Orchis
+cp -r colors /usr/share/themes/Orchis/ || {
   echo "Warning: Failed to copy Orchis KDE color scheme" >&2
   SKIP_ORCHIS_KDE=1
 }
@@ -226,24 +214,30 @@ mkdir -p /tmp/vimix-cursors
 cd /tmp/vimix-cursors
 VIMIX_TAG=$(get_latest_tag "https://github.com/vinceliuice/Vimix-cursors.git")
 if [ -z "$VIMIX_TAG" ]; then
-  VIMIX_TAG="master"  # Fallback to master as per hint
-  echo "Warning: Could not fetch Vimix cursors tag, falling back to master" >&2
+  VIMIX_TAG="main"
+  echo "Warning: Could not fetch Vimix cursors tag, falling back to main" >&2
 fi
-git clone https://github.com/vinceliuice/Vimix-cursors.git --depth 1 --branch "$VIMIX_TAG" --single-branch && \
-cd Vimix-cursors || {
-  echo "Error: Vimix cursors repo clone failed." >&2
+git clone --no-checkout https://github.com/vinceliuice/Vimix-cursors.git && \
+cd Vimix-cursors && \
+git checkout "$VIMIX_TAG" -- || {
+  echo "Error: Vimix cursors repo clone or checkout failed." >&2
   exit 1
 }
-./install.sh || {
-  echo "Warning: Vimix cursors installation failed." >&2
+if [ -f ./install.sh ]; then
+  ./install.sh || {
+    echo "Warning: Vimix cursors installation failed." >&2
+    SKIP_VIMIX=1
+  }
+else
+  echo "Error: install.sh not found in Vimix-cursors repository" >&2
   SKIP_VIMIX=1
-}
+fi
 cd /tmp
 rm -rf vimix-cursors
 
 # Configure Bluetooth
 echo "Configuring Bluetooth..."
-rc-update add bluetooth || echo "Warning: Failed to add bluetooth to boot services"
+rc-update add bluetooth default || echo "Warning: Failed to add bluetooth to boot services"
 cat > /etc/bluetooth/main.conf << EOL
 [General]
 Name = AlpineWayland
@@ -258,7 +252,7 @@ echo "uinput" >> /etc/modules || echo "Warning: Failed to add uinput module"
 
 # Configure TLP
 echo "Configuring TLP..."
-rc-update add tlp || echo "Warning: Failed to add TLP to boot services"
+rc-update add tlp default || echo "Warning: Failed to add TLP to boot services"
 cat > /etc/tlp.conf << EOL
 TLP_DEFAULT_MODE=BAT
 CPU_SCALING_GOVERNOR_ON_BAT=powersave
@@ -282,9 +276,9 @@ EOL
 
 # Configure sound
 echo "Configuring sound services..."
-rc-update add pipewire || echo "Warning: Failed to add pipewire to boot services"
-rc-update add wireplumber || echo "Warning: Failed to add wireplumber to boot services"
-rc-update add alsa || echo "Warning: Failed to add alsa to boot services"
+rc-service pipewire start 2>/dev/null || echo "Warning: Failed to start pipewire service"
+rc-service wireplumber start 2>/dev/null || echo "Warning: Failed to start wireplumber service"
+rc-update add alsa default || echo "Warning: Failed to add alsa to boot services"
 alsactl init 2>/dev/null || true
 cat > /etc/asound.conf << EOL
 defaults.pcm.card 0
@@ -293,9 +287,9 @@ EOL
 
 # Configure elogind, dbus, udev
 echo "Configuring session services..."
-rc-update add elogind || echo "Warning: Failed to add elogind to boot services"
-rc-update add dbus || echo "Warning: Failed to add dbus to boot services"
-rc-update add udev || echo "Warning: Failed to add udev to boot services"
+rc-update add elogind default || echo "Warning: Failed to add elogind to boot services"
+rc-update add dbus default || echo "Warning: Failed to add dbus to boot services"
+rc-update add udev default || echo "Warning: Failed to add udev to boot services"
 
 # Configure PAM for XDG_RUNTIME_DIR
 echo "Configuring PAM for XDG_RUNTIME_DIR..."
@@ -311,7 +305,7 @@ EOL
 
 # Configure greetd and gtkgreet
 echo "Configuring greetd login manager..."
-rc-update add greetd || echo "Warning: Failed to add greetd to boot services"
+rc-update add greetd default || echo "Warning: Failed to add greetd to boot services"
 cat > /etc/greetd/config.toml << EOL
 [terminal]
 vt = "next"
@@ -330,10 +324,10 @@ addgroup greetd bluetooth 2>/dev/null || true
 # Ensure gtkgreet uses Orchis themes
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   mkdir -p /usr/share/themes
-  cp -r "$USER_HOME/.themes/Orchis-Dark" /usr/share/themes/ || {
+  cp -r /usr/share/themes/Orchis-Dark /usr/share/themes/ || {
     echo "Warning: Failed to copy Orchis-Dark theme for gtkgreet." >&2
   }
-  cp -r "$USER_HOME/.themes/Orchis-Light" /usr/share/themes/ || {
+  cp -r /usr/share/themes/Orchis-Light /usr/share/themes/ || {
     echo "Warning: Failed to copy Orchis-Light theme for gtkgreet." >&2
   }
 fi
@@ -418,7 +412,7 @@ EOL
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
 fi
 
-# Configure GTK theme for all future GTK apps
+# Configure GTK theme
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
 [Settings]
@@ -440,18 +434,18 @@ gtk-application-prefer-dark-theme=true
 gtk-button-images=true
 gtk-menu-images=true
 EOL
-  ln -sf "$USER_HOME/.themes/Orchis-Dark/gtk-4.0" "$USER_HOME/.config/gtk-4.0" || {
+  ln -sf /usr/share/themes/Orchis-Dark/gtk-4.0 "$USER_HOME/.config/gtk-4.0" || {
     echo "Warning: Failed to link GTK 4.0 theme for libadwaita." >&2
   }
 fi
 
-# Configure Qt theme for all future Qt apps
+# Configure Qt theme
 if [ -z "$SKIP_ORCHIS_KDE" ]; then
   mkdir -p "$USER_HOME/.config/qt5ct"
   cat > "$USER_HOME/.config/qt5ct/qt5ct.conf" << EOL
 [Appearance]
 style=fusion
-color_scheme_path=$QT_THEME_DIR/colors/OrchisDark.colors
+color_scheme_path=/usr/share/themes/Orchis/colors/OrchisDark.colors
 icon_theme=Papirus-Dark
 custom_palette=true
 [Palette]
@@ -515,7 +509,7 @@ cat > /usr/local/bin/wallpaper-color.sh << EOL
 WALLPAPER="/usr/share/backgrounds/orchis-wallpaper.jpg"
 if [ -f "\$WALLPAPER" ]; then
   COLOR=\$(magick "\$WALLPAPER" -resize 1x1 txt: | grep -o "#[0-9A-F]\{6\}" | head -1)
-  # Adjust to Material You-like hue (close to #8AB4F8)
+  # Adjust to Material You-like hue
   if [ -n "\$COLOR" ]; then
     echo "\$COLOR"
     exit 0
@@ -529,7 +523,7 @@ chmod +x /usr/local/bin/wallpaper-color.sh
 # Configure tray popup
 cat > /usr/local/bin/tray-popup.sh << EOL
 #!/bin/sh
-# Toggle sfwbar tray popups (Wi-Fi, volume, Bluetooth, brightness)
+# Toggle sfwbar tray popups
 BRIGHTNESS_DEV=\$(ls /sys/class/backlight/* 2>/dev/null | head -1)
 if [ -n "\$BRIGHTNESS_DEV" ]; then
   MAX_BRIGHTNESS=\$(cat "\$BRIGHTNESS_DEV/max_brightness")
@@ -547,7 +541,7 @@ if [ -n "\$BRIGHTNESS_DEV" ]; then
   echo "  scale { min = 0; max = 100; value = \$BRIGHTNESS_PERCENT; exec = 'echo %d > \$BRIGHTNESS_DEV/brightness'; }"
 fi
 echo "}"
-# Signal sfwbar to show popup (simulated click)
+# Signal sfwbar to show popup
 sfwbar -s Network
 EOL
 chmod +x /usr/local/bin/tray-popup.sh
@@ -627,8 +621,8 @@ cat > "$USER_HOME/.config/labwc/menu.xml" << EOL
     $( [ -z "$SKIP_SMPLAYER" ] && echo '<item label="Player"><action name="Execute"><execute>smplayer</execute></action></item>' || true )
     <item label="Drawing"><action name="Execute"><execute>drawing</execute></action></item>
     <item label="PDF"><action name="Execute"><execute>mupdf</execute></action></item>
-    $( [ -z "$SKIP_LITEXL" ] && echo '<item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>' || true )
-    $( [ -z "$SKIP_IMAGE_ROLL" ] && echo '<item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>' || true )
+    <item label="Editor"><action name="Execute"><execute>lite-xl</execute></action></item>
+    <item label="Images"><action name="Execute"><execute>image-roll</execute></action></item>
     <item label="Bluetooth"><action name="Execute"><execute>blueman-manager</execute></action></item>
     <item label="Audio"><action name="Execute"><execute>pavucontrol</execute></action></item>
     <item label="Screenshot"><action name="Execute"><execute>grim -g \"\$(slurp)\" /home/$USER_NAME/screenshot-\$(date +%s).png</execute></action></item>
@@ -886,7 +880,7 @@ if grep -q "gtk-theme-name=Orchis-Dark" "\$CONFIG"; then
   sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "\$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-White/gtk-cursor-theme-name=Vimix-Black/' "\$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "\$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=$QT_THEME_DIR\/colors\/OrchisLight.colors/' "\$QTCONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/themes\/Orchis\/colors\/OrchisLight.colors/' "\$QTCONFIG"
   sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "\$QTCONFIG"
   sed -i 's/active-window=#202124/active-window=#F1F3F4/' "\$QTCONFIG"
   sed -i 's/active-highlight=#8AB4F8/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
@@ -916,7 +910,7 @@ else
   sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "\$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-Black/gtk-cursor-theme-name=Vimix-White/' "\$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "\$CONFIG"
-  sed -i 's/color_scheme_path=.*/color_scheme_path=$QT_THEME_DIR\/colors\/OrchisDark.colors/' "\$QTCONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=\/usr\/share\/themes\/Orchis\/colors\/OrchisDark.colors/' "\$QTCONFIG"
   sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "\$QTCONFIG"
   sed -i 's/active-window=#F1F3F4/active-window=#202124/' "\$QTCONFIG"
   sed -i 's/active-highlight=#[0-9A-F]\{6\}/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
@@ -1189,9 +1183,9 @@ chown root:root /usr/local/bin/* || {
 
 # Enable services
 echo "Enabling system services..."
-rc-update add local || echo "Warning: Failed to add local to boot services"
-rc-update add polkit || echo "Warning: Failed to add polkit to boot services"
-rc-update add crond || echo "Warning: Failed to add crond to boot services"
+rc-update add local default || echo "Warning: Failed to add local to boot services"
+rc-update add polkit default || echo "Warning: Failed to add polkit to boot services"
+rc-update add crond default || echo "Warning: Failed to add crond to boot services"
 
 # Cleanup
 echo "Cleaning up build dependencies..."
@@ -1212,37 +1206,36 @@ fi
 
 # Verification
 echo "======================================================================"
-echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management. Styled like ChromeOS Flex with Material You and Fluent UI, plus macOS, Android, iOS inspirations: gtkgreet login, sfwbar shelf, wofi start menu, Wi-Fi/sound/Bluetooth/brightness controls, Orchis-Dark/Light (GTK/Qt), Papirus-Dark/Light icons (rounded), Vimix-White/Black cursors."
+echo "Setup complete! Wayland with labwc, gtkgreet, sound, Bluetooth, elogind, qtfm, clipboard, screenshots, drawing, and power management."
 echo "To verify:"
-echo "1. Reboot and login via gtkgreet (labwc session, Orchis-Dark, blurred Orchis wallpaper, #202124 box with shadow, #3C4043 fields, #8AB4F8 button hover, acrylic blur, Vimix-White cursor)."
-echo "2. Test sound: play a file in smplayer (OrchisDark Qt theme, #8AB4F8 buttons, Papirus-Dark rounded icons, latest version)."
-echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device (e.g., headphones), or use blueman-manager from wofi (Orchis-Dark, #8AB4F8 buttons, Papirus-Dark rounded)."
-echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected, use pavucontrol to select Bluetooth output (Orchis-Dark, #8AB4F8 buttons, Papirus-Dark rounded)."
-echo "5. Test qtfm: open qtfm, verify image/video thumbnails, OrchisDark Qt theme, #8AB4F8 buttons, Papirus-Dark rounded icons (latest version)."
-echo "6. Test clipboard: copy text, run 'wl-paste' to verify (wl-clipboard, Vimix-White cursor)."
-echo "7. Test screenshot: press PrtSc or select 'Screenshot' from wofi, check ~/screenshot-*.png (Vimix-White cursor)."
-echo "8. Test file picker: use badwolf to upload a file (xdg-desktop-portal-wlr, Orchis-Dark, #8AB4F8 buttons, Papirus-Dark rounded, Vimix-White cursor)."
-echo "9. Test drawing: select 'Drawing' from wofi, draw a shape, save as PNG, verify Orchis-Dark, Papirus-Dark rounded, #8AB4F8 buttons, Vimix-White cursor."
-echo "10. Test sfwbar shelf: Verify bottom bar, dark #202124 (light #F1F3F4), 70% opacity, 4px corners, shadow, autohide, pinned apps (foot, badwolf, qtfm, smplayer, drawing, mupdf, blueman, pavucontrol, 32x32px circular icons), tray with Wi-Fi/volume/Bluetooth/battery/clock (24x24px semi-rounded), #8AB4F8 hover, Papirus-Dark/Light, Vimix-White cursor, macOS-like magnify (1.2x hover), bounce (1.5x click)."
-echo "11. Test wofi launcher: Press Super or Super+Space, verify 400x600px, dark #303134 (light #FFFFFF), 90% opacity, 8px corners, acrylic blur, shadow, 4x4 app grid with shadows, 48x48px circular icons, Roboto 12pt, Papirus-Dark/Light, #3C4043/#E8EAED search bar, #8AB4F8 hover, fade-in animation, Vimix-White cursor, alphabetical sort (iOS App Library)."
-echo "12. Test wofi search: Type in wofi, verify instant app filtering (Vimix-White cursor, macOS Spotlight-like)."
-echo "13. Test sfwbar controls: Click or press Super+S, verify popups (#303134 dark, #FFFFFF light, 90%, 8px corners, acrylic blur, shadow, #8AB4F8 rounded toggles/sliders for Wi-Fi/volume/Bluetooth/brightness, Roboto 10pt, Papirus-Dark/Light semi-rounded, Vimix-White cursor, Android/iOS Quick Settings)."
-echo "14. Test notifications: Trigger via 'notify-send test', verify compact (50x200px, top-center), dark #303134 (light #FFFFFF), white/black text, 8px corners, acrylic blur, shadow, Roboto 12pt, #8AB4F8 actions, Vimix-White cursor, press Super+N to restore (iOS Dynamic Island)."
-echo "15. Test light/dark mode: Press Super+T, verify switch between Orchis-Dark (#303134, #202124) and Orchis-Light (#F1F3F4, #FFFFFF) for GTK/Qt apps, Papirus-Dark ↔ Papirus-Light icons (circular in shelf/grid), Vimix-White ↔ Vimix-Black cursors, dynamic #8AB4F8-like accents (Android Material You), updates gtkgreet (Vimix-White), wofi, sfwbar, mako, foot."
-echo "16. Test window styling: Open foot/badwolf/qtfm, verify labwc titlebars (#202124 dark, #F1F3F4 light, 4px corners, shadow), fade animations, Papirus-Dark/Light rounded icons, Vimix-White cursor."
-echo "17. Test shortcuts: Verify Super (wofi, Windows/ChromeOS), Super+Space (wofi, macOS Spotlight), Super+D (desktop, Windows/ChromeOS), Alt+Tab (switch, Windows/ChromeOS), F3 (cycle, macOS Mission Control), Alt+F4 (close, Windows), Super+E (qtfm, Windows/ChromeOS), Super+L (lock, Windows/ChromeOS), PrtSc (screenshot, Windows/ChromeOS), Super+Left/Right (snap, Windows/ChromeOS), Super+R (run, Windows), Super+S (tray, Android/iOS), Super+B (back, Android), Super+N (notifications, iOS), Super+T (theme), all with Vimix-White cursor."
-echo "18. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0 (expect 4-6W)."
-echo "19. Idle 2 minutes to confirm lock, 5 minutes for suspend (~0.5W)."
-echo "20. Check disk: cat /sys/block/sda/queue/scheduler (bfq for HDD, mq-deadline for SSD)."
-echo "21. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor (powersave on battery)."
-echo "22. Compare to ChromeOS Flex (expect 10-20% better battery)."
-echo "23. Check elogind/TLP coordination: systemctl status tlp (if running)."
-echo "24. Check themes: qtfm/smplayer use OrchisDark/Light Qt theme (fusion, #8AB4F8 buttons), gtkgreet/wofi/badwolf/image-roll/blueman/pavucontrol/drawing use Orchis-Dark/Light GTK theme (#8AB4F8 buttons), all apps use Papirus-Dark/Light icons (circular in shelf/grid), Vimix-White/Black cursors."
-echo "25. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet (blurred)."
-echo "26. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
-echo "27. Check Wayland: Run 'wayland-info' to verify compositor details."
-echo "28. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors should be latest tagged releases."
-echo "29. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "1. Reboot and login via gtkgreet (labwc session)."
+echo "2. Test sound: play a file in smplayer."
+echo "3. Test Bluetooth: run 'bluetoothctl', then 'power on', 'scan on', pair a device."
+echo "4. Test Bluetooth audio: play a file in smplayer with Bluetooth device connected."
+echo "5. Test qtfm: open qtfm, verify image/video thumbnails."
+echo "6. Test clipboard: copy text, run 'wl-paste' to verify."
+echo "7. Test screenshot: press PrtSc or select 'Screenshot' from wofi."
+echo "8. Test file picker: use badwolf to upload a file."
+echo "9. Test drawing: select 'Drawing' from wofi, draw a shape, save as PNG."
+echo "10. Test sfwbar shelf: Verify bottom bar, pinned apps, tray with controls."
+echo "11. Test wofi launcher: Press Super or Super+Space, verify app grid."
+echo "12. Test wofi search: Type in wofi, verify instant app filtering."
+echo "13. Test sfwbar controls: Click or press Super+S, verify popups."
+echo "14. Test notifications: Trigger via 'notify-send test', verify compact."
+echo "15. Test light/dark mode: Press Super+T, verify theme switch."
+echo "16. Test window styling: Open foot/badwolf/qtfm, verify labwc titlebars."
+echo "17. Test shortcuts: Verify Super, Super+Space, Super+D, Alt+Tab, etc."
+echo "18. Check idle power: upower -i /org/freedesktop/UPower/devices/battery_BAT0."
+echo "19. Idle 2 minutes to confirm lock, 5 minutes for suspend."
+echo "20. Check disk: cat /sys/block/sda/queue/scheduler."
+echo "21. Check CPU: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor."
+echo "22. Check elogind/TLP coordination: systemctl status tlp."
+echo "23. Check themes: Verify qtfm/smplayer use OrchisDark/Light Qt theme."
+echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet."
+echo "25. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR'."
+echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
+echo "27. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors."
+echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
 echo "======================================================================"
 
 exit 0
