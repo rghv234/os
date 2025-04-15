@@ -30,12 +30,13 @@ apk add --no-cache \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils \
   rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
+  qt6-qtbase-dev xcur2png \
   imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev \
   clipman grim slurp xdg-desktop-portal-wlr \
   sassc qt5ct papirus-icon-theme \
   bluez bluez-openrc blueman linux-firmware \
   mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
-  xdotool qt6-qtbase-dev qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev || {
+  xdotool qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -111,8 +112,13 @@ if ! command -v qtfm >/dev/null 2>&1; then
     exit 1
   }
   cd qtfm
-  # Use qmake instead of CMake due to CMakeLists.txt issues
-  qmake-qt6 PREFIX=/usr || {
+  # Use qmake-qt6 if available, else fallback to qmake
+  if ! command -v qmake-qt6 >/dev/null 2>&1; then
+    QMAKE_CMD=qmake
+  else
+    QMAKE_CMD=qmake-qt6
+  fi
+  $QMAKE_CMD PREFIX=/usr || {
     echo "Warning: qtfm qmake configuration failed." >&2
     SKIP_QTFM=1
   }
@@ -159,25 +165,17 @@ mkdir -p /usr/share/themes
 # Remove GNOME Shell files
 find /usr/share/themes/Orchis-* -type d -name "gnome-shell" -exec rm -rf {} + 2>/dev/null || true
 # Install wallpaper
-if [ -f "wallpaper/1080p.jpg" ]; then
-  mkdir -p /usr/share/backgrounds
-  cp wallpaper/1080p.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
-    echo "Warning: Orchis wallpaper copy failed." >&2
-    SKIP_WALLPAPER=1
-  }
-elif [ -f "wallpaper/2k.jpg" ]; then
-  mkdir -p /usr/share/backgrounds
-  cp wallpaper/2k.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
-    echo "Warning: Orchis wallpaper copy failed." >&2
-    SKIP_WALLPAPER=1
-  }
-elif [ -f "wallpaper/4k.jpg" ]; then
-  mkdir -p /usr/share/backgrounds
-  cp wallpaper/4k.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
-    echo "Warning: Orchis wallpaper copy failed." >&2
-    SKIP_WALLPAPER=1
-  }
-else
+for res in "1080p" "2k" "4k"; do
+  if [ -f "wallpaper/$res.jpg" ]; then
+    mkdir -p /usr/share/backgrounds
+    cp "wallpaper/$res.jpg" /usr/share/backgrounds/orchis-wallpaper.jpg || {
+      echo "Warning: Orchis wallpaper copy failed." >&2
+      SKIP_WALLPAPER=1
+    }
+    break
+  fi
+done
+if [ ! -f /usr/share/backgrounds/orchis-wallpaper.jpg ]; then
   echo "Warning: No wallpaper found in Orchis theme, using fallback." >&2
   mkdir -p /usr/share/backgrounds
   echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /usr/share/backgrounds/orchis-wallpaper.jpg
@@ -225,8 +223,8 @@ git checkout "$VIMIX_TAG" -- || {
 }
 if [ -f ./install.sh ]; then
   ./install.sh || {
-    echo "Warning: Vimix cursors installation failed." >&2
-    SKIP_VIMIX=1
+    echo "Warning: Vimix cursors installation failed. Attempting fallback." >&2
+    cp -r dist/* /usr/share/icons/ 2>/dev/null || SKIP_VIMIX=1
   }
 else
   echo "Error: install.sh not found in Vimix-cursors repository" >&2
@@ -334,36 +332,22 @@ fi
 
 # User configuration
 echo "User configuration..."
-echo "Enter username for configuration (blank for auto-detect): "
-read -r USER_INPUT
-if [ -z "$USER_INPUT" ]; then
-  USER_HOME=$(getent passwd | grep -v '^root:' | grep -v '^greetd:' | grep -v '/sbin/nologin$' | head -1 | cut -d: -f6)
-  USER_NAME=$(basename "$USER_HOME" 2>/dev/null || echo "user")
-  if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
-    USER_HOME="/home/user"
-    USER_NAME="user"
-    if ! id "$USER_NAME" >/dev/null 2>&1; then
-      echo "Creating default user '$USER_NAME'..."
-      adduser -D "$USER_NAME" || {
-        echo "Failed to create user" >&2
-        exit 1
-      }
-    fi
-  fi
-else
-  USER_NAME="$USER_INPUT"
-  USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
-  if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
-    echo "User '$USER_NAME' does not exist or has no home directory."
-    echo "Creating user '$USER_NAME'..."
-    adduser -D "$USER_NAME" || {
-      echo "Failed to create user" >&2
-      exit 1
-    }
-    USER_HOME="/home/$USER_NAME"
-  fi
+USER_NAME="user"
+USER_HOME="/home/$USER_NAME"
+if ! id "$USER_NAME" >/dev/null 2>&1; then
+  echo "Creating default user '$USER_NAME'..."
+  adduser -D "$USER_NAME" || {
+    echo "Failed to create user" >&2
+    exit 1
+  }
 fi
-
+if [ ! -d "$USER_HOME" ]; then
+  mkdir -p "$USER_HOME" || {
+    echo "Failed to create home directory" >&2
+    exit 1
+  }
+  chown "$USER_NAME:$USER_NAME" "$USER_HOME"
+fi
 echo "Configuring for user: $USER_NAME (home: $USER_HOME)"
 mkdir -p "$USER_HOME/.config/"{labwc,sfwbar,foot,qtfm,wlsleephandler-rs,badwolf,mako,clipman,gtk-3.0,gtk-4.0,qt5ct,wofi} || {
   echo "Failed to create config directories" >&2
@@ -1191,7 +1175,7 @@ rc-update add crond default || echo "Warning: Failed to add crond to boot servic
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
+  qt6-qtbase-dev xcur2png imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
 for pkg in $RUNTIME_DEPS; do
   BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
 done
@@ -1235,7 +1219,7 @@ echo "24. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet
 echo "25. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR'."
 echo "26. Check Wayland: Run 'wayland-info' to verify compositor details."
 echo "27. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors."
-echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
+echo "28. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|xcur2png|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"'."
 echo "======================================================================"
 
 exit 0
