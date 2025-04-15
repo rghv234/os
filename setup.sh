@@ -35,7 +35,7 @@ apk add --no-cache \
   sassc qt5ct papirus-icon-theme \
   bluez bluez-openrc blueman linux-firmware \
   mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol \
-  xdotool || {
+  xdotool qt6-qtbase-dev qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev || {
   echo "Failed to install required packages" >&2
   exit 1
 }
@@ -45,7 +45,7 @@ RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
   drawing font-roboto wofi greetd cage dbus polkit tlp elogind wlr-randr upower iw util-linux udev \
   pipewire wireplumber pipewire-alsa pipewire-pulse alsa-lib alsa-utils clipman grim slurp \
   xdg-desktop-portal-wlr qt5ct papirus-icon-theme imagemagick ffmpeg \
-  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool"
+  bluez blueman linux-firmware mesa-dri-gallium xwayland wl-clipboard wayland-utils pam-rundir pavucontrol xdotool qt6-qtbase-dev qt6-qttools-dev qt6-qtsvg-dev qt6-qt5compat-dev"
 
 # Function to get latest git tag
 get_latest_tag() {
@@ -54,7 +54,7 @@ get_latest_tag() {
     sed 's|.*/||' | sort -V | tail -1 || echo ""
 }
 
-# Install smplayer from source
+# Install smplayer from source (Qt5 compatible)
 if ! command -v smplayer >/dev/null 2>&1; then
   echo "Building smplayer..."
   mkdir -p /tmp/smplayer
@@ -69,15 +69,21 @@ if ! command -v smplayer >/dev/null 2>&1; then
     echo "Error: smplayer repo clone failed." >&2
     exit 1
   }
-  make PREFIX=/usr || {
-    echo "Warning: smplayer build failed. Skipping." >&2
+  qmake-qt5 PREFIX=/usr || {
+    echo "Warning: smplayer qmake configuration failed. Skipping." >&2
     SKIP_SMPLAYER=1
   }
   if [ -z "$SKIP_SMPLAYER" ]; then
-    make install PREFIX=/usr || {
-      echo "Failed to install smplayer" >&2
+    make PREFIX=/usr || {
+      echo "Warning: smplayer build failed. Skipping." >&2
       SKIP_SMPLAYER=1
     }
+    if [ -z "$SKIP_SMPLAYER" ]; then
+      make install PREFIX=/usr || {
+        echo "Failed to install smplayer" >&2
+        SKIP_SMPLAYER=1
+      }
+    fi
   fi
   cd /tmp
   rm -rf smplayer
@@ -90,7 +96,7 @@ cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
   SKIP_WLSLEEPHANDLER=1
 }
 
-# Install qtfm
+# Install qtfm (Qt6 compatible)
 if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
   mkdir -p /tmp/qtfm
@@ -105,7 +111,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
     echo "Error: qtfm repo clone failed." >&2
     exit 1
   }
-  # Use CMake build system as per README since 6.3.0
+  # Use CMake with Qt6
   mkdir build
   cd build
   cmake .. \
@@ -119,6 +125,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
     -DENABLE_DBUS=TRUE \
     -DENABLE_UDISKS=TRUE \
     -DENABLE_TRAY=FALSE \
+    -DCMAKE_CXX_STANDARD=17 \
     -DCMAKE_CXX_FLAGS="-fpermissive" || {
     echo "Warning: qtfm CMake configuration failed." >&2
     SKIP_QTFM=1
@@ -1235,7 +1242,7 @@ echo "25. Check wallpaper: Verify Orchis wallpaper in labwc session and gtkgreet
 echo "26. Check XDG_RUNTIME_DIR: Run 'echo \$XDG_RUNTIME_DIR' (expect /run/user/<uid>)."
 echo "27. Check Wayland: Run 'wayland-info' to verify compositor details."
 echo "28. Check source versions: smplayer, qtfm, Orchis themes, Vimix cursors should be latest tagged releases."
-echo "29. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
+echo "29. Check cleanup: Run 'apk info | grep -E \"rust|cargo|git|sassc|cmake|g++|make|qt5.*dev|qt6.*dev|musl-dev|pkgconf|openssl-dev|lua-dev|sdl2-dev|imagemagick-dev|dbus-dev|udisks2-dev|ffmpeg-dev\"' (expect no output)."
 echo "======================================================================"
 
 exit 0
