@@ -60,7 +60,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
   mkdir -p /tmp/qtfm && cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
-  [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
+  [ -z "$QTFM_TAG" ] && QTFM_TAG="master"  # Default to master if no tag is found
   echo "Cloning qtfm with tag/branch: $QTFM_TAG..."
   # Remove existing qtfm directory if it exists and is not empty
   [ -d qtfm ] && { echo "Removing existing qtfm directory..." >&2; rm -rf qtfm || { echo "Error: Failed to remove existing qtfm directory" >&2; exit 1; }; }
@@ -68,33 +68,27 @@ if ! command -v qtfm >/dev/null 2>&1; then
   git clone https://github.com/rodlie/qtfm.git -v || { echo "Error: Initial full clone failed" >&2; exit 1; }
   cd qtfm
   echo "Current directory: $(pwd)"
-  # Verify Git repository state
-  echo "Git repository state: $(git rev-parse --abbrev-ref HEAD) at $(git rev-parse HEAD)"
   # Force checkout to ensure working tree is populated
-  git checkout "$QTFM_TAG" 2>/dev/null || git checkout main
+  git checkout "$QTFM_TAG" 2>/dev/null || git checkout master
+  echo "Checked out commit: $(git rev-parse HEAD)"
   echo "Files in directory after checkout:"
   ls -la
   # Verify CMakeLists.txt
   if [ ! -f CMakeLists.txt ]; then
     echo "Error: CMakeLists.txt not found in $(pwd)" >&2
     echo "Directory contents: $(ls -la)" >&2
-    echo "Attempting manual download as fallback..." >&2
-    # Fallback: Download specific release archive
-    cd /tmp/qtfm
-    wget https://github.com/rodlie/qtfm/archive/refs/tags/6.2.1.tar.gz -O qtfm-6.2.1.tar.gz || { echo "Error: Failed to download qtfm archive" >&2; exit 1; }
-    tar -xzf qtfm-6.2.1.tar.gz || { echo "Error: Failed to extract qtfm archive" >&2; exit 1; }
-    mv qtfm-6.2.1 qtfm-fallback
-    cd qtfm-fallback
-    echo "Files in fallback directory:"
+    echo "Attempting fallback to master branch..."
+    git checkout master
+    echo "Files in directory after fallback to master:"
     ls -la
     if [ ! -f CMakeLists.txt ]; then
-      echo "Error: CMakeLists.txt not found in fallback directory" >&2
+      echo "Error: CMakeLists.txt not found in master branch" >&2
       exit 1
     fi
-    echo "Found CMakeLists.txt in fallback, proceeding with build..."
+    echo "Found CMakeLists.txt in master branch, proceeding with build..."
   fi
   command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
-  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -CMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
     echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
     QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
     $QMAKE_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
@@ -105,7 +99,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
   if [ -z "$SKIP_QTFM" ]; then
     make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; }
   fi
-  cd /tmp && rm -rf qtfm qtfm-6.2.1.tar.gz qtfm-fallback
+  cd /tmp && rm -rf qtfm
 fi
 
 # Install Orchis GTK theme and wallpaper
