@@ -90,14 +90,20 @@ if ! command -v smplayer >/dev/null 2>&1; then
   if [ -z "$SKIP_SMPLAYER" ]; then
     export PATH="/usr/lib/qt5/bin:$PATH"
     echo "Running qmake-qt5 with PREFIX=/usr..." >&2
-    qmake-qt5 PREFIX=/usr -d > qmake.log 2>&1 || {
-      echo "Warning: qmake-qt5 configuration failed for smplayer. Check qmake.log for details. Skipping." >&2
+    qmake-qt5 PREFIX=/usr > qmake.log 2>&1 || {
+      echo "Error: qmake-qt5 configuration failed for smplayer. Check qmake.log:" >&2
       cat qmake.log >&2
-      SKIP_SMPLAYER=1
+      # Attempt to install missing Qt5 dependencies
+      apk add qt5-qtmultimedia-dev qt5-qtsvg-dev qt5-qtx11extras-dev || true
+      qmake-qt5 PREFIX=/usr > qmake.log 2>&1 || {
+        echo "Error: qmake-qt5 still failed after adding dependencies. Check qmake.log for details. Skipping smplayer." >&2
+        cat qmake.log >&2
+        SKIP_SMPLAYER=1
+      }
     }
     if [ -z "$SKIP_SMPLAYER" ]; then
       make PREFIX=/usr > make.log 2>&1 || {
-        echo "Warning: smplayer build failed. Check make.log for details. Skipping." >&2
+        echo "Error: smplayer build failed. Check make.log:" >&2
         cat make.log >&2
         SKIP_SMPLAYER=1
       }
