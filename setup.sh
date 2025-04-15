@@ -462,7 +462,7 @@ EOL
     exit 1
   }
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
-fi  # Ensure this 'fi' is present to close the if-else block
+fi  
 
 # Configure GTK theme
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
