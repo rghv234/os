@@ -62,8 +62,10 @@ if ! command -v qtfm >/dev/null 2>&1; then
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
   [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
   echo "Cloning qtfm with tag/branch: $QTFM_TAG..."
+  # Remove existing qtfm directory if it exists and is not empty
+  [ -d qtfm ] && { echo "Removing existing qtfm directory..." >&2; rm -rf qtfm || { echo "Error: Failed to remove existing qtfm directory" >&2; exit 1; }; }
   git clone https://github.com/rodlie/qtfm.git --branch "$QTFM_TAG" -v || {
-    echo "Warning: Shallow clone failed, attempting full clone..." >&2
+    echo "Warning: Initial clone failed, attempting full clone..." >&2
     git clone https://github.com/rodlie/qtfm.git -v || { echo "Error: qtfm clone failed" >&2; exit 1; }
   }
   cd qtfm
