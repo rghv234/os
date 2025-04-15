@@ -58,42 +58,25 @@ cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
 # Install qtfm
 if ! command -v qtfm >/dev/null 2>&1; then
   echo "Building qtfm..."
-  mkdir -p /tmp/qtfm
-  cd /tmp/qtfm
+  mkdir -p /tmp/qtfm && cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
-  if [ -z "$QTFM_TAG" ]; then
-    QTFM_TAG="main"
-    echo "Warning: Could not fetch qtfm tag, falling back to main" >&2
-  fi
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch || {
-    echo "Error: qtfm repo clone failed." >&2
-    exit 1
-  }
+  [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
+  command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
+  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" -v || { echo "Error: qtfm clone failed" >&2; exit 1; }
   cd qtfm
-  # Use qmake-qt6 if available, else fallback to qmake
-  if ! command -v qmake-qt6 >/dev/null 2>&1; then
-    QMAKE_CMD=qmake
-  else
-    QMAKE_CMD=qmake-qt6
-  fi
-  $QMAKE_CMD PREFIX=/usr || {
-    echo "Warning: qtfm qmake configuration failed." >&2
-    SKIP_QTFM=1
-  }
-  if [ -z "$SKIP_QTFM" ]; then
-    make || {
-      echo "Warning: qtfm build failed." >&2
+  [ -f CMakeLists.txt ] || { echo "Error: CMakeLists.txt not found in qtfm directory" >&2; exit 1; }
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
+    echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
+    QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
+    $QMAKE_CMD PREFIX=/usr CONFIG+=with_magick CONFIG+=with_ffmpeg . || {
+      echo "Error: qtfm qmake configuration failed" >&2
       SKIP_QTFM=1
     }
-    if [ -z "$SKIP_QTFM" ]; then
-      make install || {
-        echo "Failed to install qtfm" >&2
-        SKIP_QTFM=1
-      }
-    fi
+  }
+  if [ -z "$SKIP_QTFM" ]; then
+    make -j$(nproc) && make install || { echo "Error: qtfm build/install failed" >&2; SKIP_QTFM=1; }
   fi
-  cd /tmp
-  rm -rf qtfm
+  cd /tmp && rm -rf qtfm
 fi
 
 # Install Orchis GTK theme and wallpaper
