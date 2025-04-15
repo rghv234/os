@@ -61,10 +61,15 @@ if ! command -v qtfm >/dev/null 2>&1; then
   mkdir -p /tmp/qtfm && cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
   [ -z "$QTFM_TAG" ] && QTFM_TAG="main"
-  command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
-  git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" -v || { echo "Error: qtfm clone failed" >&2; exit 1; }
+  echo "Cloning qtfm with tag/branch: $QTFM_TAG..."
+  git clone https://github.com/rodlie/qtfm.git --branch "$QTFM_TAG" -v || {
+    echo "Warning: Shallow clone failed, attempting full clone..." >&2
+    git clone https://github.com/rodlie/qtfm.git -v || { echo "Error: qtfm clone failed" >&2; exit 1; }
+  }
   cd qtfm
-  [ -f CMakeLists.txt ] || { echo "Error: CMakeLists.txt not found in qtfm directory" >&2; exit 1; }
+  echo "Current directory: $(pwd)"
+  ls -l CMakeLists.txt 2>/dev/null || { echo "Error: CMakeLists.txt not found in $(pwd)" >&2; exit 1; }
+  command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
   cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
     echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
     QMAKE_CMD=$(command -v qmake-qt6 >/dev/null 2>&1 && echo "qmake-qt6" || echo "qmake")
