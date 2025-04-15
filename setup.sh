@@ -61,7 +61,7 @@ if ! command -v smplayer >/dev/null 2>&1; then
   cd /tmp/smplayer
   SMPLAYER_TAG=$(get_latest_tag "https://github.com/smplayer-dev/smplayer.git")
   if [ -z "$SMPLAYER_TAG" ]; then
-    SMPLAYER_TAG="master"
+    SMPLAYER_TAG="master"  # Fallback to master as per hint
     echo "Warning: Could not fetch smplayer tag, falling back to master" >&2
   fi
   git clone https://github.com/smplayer-dev/smplayer.git --depth 1 --branch "$SMPLAYER_TAG" --single-branch && \
@@ -97,7 +97,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
   cd /tmp/qtfm
   QTFM_TAG=$(get_latest_tag "https://github.com/rodlie/qtfm.git")
   if [ -z "$QTFM_TAG" ]; then
-    QTFM_TAG="master"
+    QTFM_TAG="master"  # Fallback to master as per hint
     echo "Warning: Could not fetch qtfm tag, falling back to master" >&2
   fi
   git clone https://github.com/rodlie/qtfm.git --depth 1 --branch "$QTFM_TAG" --single-branch && \
@@ -105,6 +105,7 @@ if ! command -v qtfm >/dev/null 2>&1; then
     echo "Error: qtfm repo clone failed." >&2
     exit 1
   }
+  # Use CMake build system as per README since 6.3.0
   mkdir build
   cd build
   cmake .. \
@@ -112,14 +113,14 @@ if ! command -v qtfm >/dev/null 2>&1; then
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_INSTALL_DOCDIR=share/doc/qtfm \
-    -CMAKE_INSTALL_MANDIR=share/man \
-    -DENABLE_MAGICK=true \
-    -DENABLE_FFMPEG=true \
-    -DENABLE_DBUS=true \
-    -DENABLE_UDISKS=true \
-    -DENABLE_TRAY=false \
+    -DCMAKE_INSTALL_MANDIR=share/man \
+    -DENABLE_MAGICK=TRUE \
+    -DENABLE_FFMPEG=TRUE \
+    -DENABLE_DBUS=TRUE \
+    -DENABLE_UDISKS=TRUE \
+    -DENABLE_TRAY=FALSE \
     -DCMAKE_CXX_FLAGS="-fpermissive" || {
-    echo "Warning: qtfm CMake failed." >&2
+    echo "Warning: qtfm CMake configuration failed." >&2
     SKIP_QTFM=1
   }
   if [ -z "$SKIP_QTFM" ]; then
@@ -138,13 +139,13 @@ if ! command -v qtfm >/dev/null 2>&1; then
   rm -rf qtfm
 fi
 
-# Install Orchis GTK theme (dark and light) and wallpaper
+# Install Orchis GTK theme and wallpaper (using install.sh, excluding GNOME Shell)
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis
 cd /tmp/orchis
 ORCHIS_GTK_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-theme.git")
 if [ -z "$ORCHIS_GTK_TAG" ]; then
-  ORCHIS_GTK_TAG="master"
+  ORCHIS_GTK_TAG="master"  # Fallback to master as per hint
   echo "Warning: Could not fetch Orchis GTK tag, falling back to master" >&2
 fi
 git clone https://github.com/vinceliuice/Orchis-theme.git --depth 1 --branch "$ORCHIS_GTK_TAG" --single-branch && \
@@ -152,46 +153,73 @@ cd Orchis-theme || {
   echo "Error: Orchis GTK repo clone failed." >&2
   exit 1
 }
+if ! command -v sassc >/dev/null 2>&1; then
+  echo "Error: sassc is required for Orchis GTK theme compilation" >&2
+  SKIP_ORCHIS_GTK=1
+fi
 ./install.sh -d "$USER_HOME/.themes" -t default -c dark light -s compact --tweaks primary || {
   echo "Warning: Orchis GTK theme installation failed." >&2
   SKIP_ORCHIS_GTK=1
 }
-mkdir -p /usr/share/backgrounds
-cp src/wallpapers/wallpaper-dark.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
-  echo "Warning: Orchis wallpaper copy failed." >&2
-  SKIP_WALLPAPER=1
-}
+# Remove GNOME Shell files to avoid GNOME specificity
+find "$USER_HOME/.themes/Orchis-*" -type d -name "gnome-shell" -exec rm -rf {} + 2>/dev/null || true
+# Check for wallpaper and use appropriate file
+if [ -f "wallpaper/1080p.jpg" ]; then
+  mkdir -p /usr/share/backgrounds
+  cp wallpaper/1080p.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
+    echo "Warning: Orchis wallpaper copy failed." >&2
+    SKIP_WALLPAPER=1
+  }
+elif [ -f "wallpaper/2k.jpg" ]; then
+  mkdir -p /usr/share/backgrounds
+  cp wallpaper/2k.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
+    echo "Warning: Orchis wallpaper copy failed." >&2
+    SKIP_WALLPAPER=1
+  }
+elif [ -f "wallpaper/4k.jpg" ]; then
+  mkdir -p /usr/share/backgrounds
+  cp wallpaper/4k.jpg /usr/share/backgrounds/orchis-wallpaper.jpg || {
+    echo "Warning: Orchis wallpaper copy failed." >&2
+    SKIP_WALLPAPER=1
+  }
+else
+  echo "Warning: No wallpaper found in Orchis theme, using fallback." >&2
+  mkdir -p /usr/share/backgrounds
+  echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > /usr/share/backgrounds/orchis-wallpaper.jpg
+fi
 cd /tmp
 rm -rf orchis
 
-# Install Orchis KDE theme
-echo "Installing Orchis KDE theme..."
+# Install Orchis KDE theme for Qt applications (manual extraction, bypassing install.sh)
+echo "Installing Orchis KDE theme for Qt applications..."
 mkdir -p /tmp/orchis-kde
 cd /tmp/orchis-kde
 ORCHIS_KDE_TAG=$(get_latest_tag "https://github.com/vinceliuice/Orchis-kde.git")
 if [ -z "$ORCHIS_KDE_TAG" ]; then
-  ORCHIS_KDE_TAG="master"
-  echo "Warning: Could not fetch Orchis KDE tag, falling back to master" >&2
+  ORCHIS_KDE_TAG="main"  # Fallback to main as per hint
+  echo "Warning: Could not fetch Orchis KDE tag, falling back to main" >&2
 fi
 git clone https://github.com/vinceliuice/Orchis-kde.git --depth 1 --branch "$ORCHIS_KDE_TAG" --single-branch && \
 cd Orchis-kde || {
   echo "Error: Orchis KDE repo clone failed." >&2
   exit 1
 }
-./install.sh -d "$USER_HOME/.themes" || {
-  echo "Warning: Orchis KDE theme installation failed." >&2
+QT_THEME_DIR="$USER_HOME/.themes/Orchis"
+mkdir -p "$QT_THEME_DIR"
+cp -r colors "$QT_THEME_DIR/" || {
+  echo "Warning: Failed to copy Orchis KDE color scheme" >&2
   SKIP_ORCHIS_KDE=1
 }
 cd /tmp
 rm -rf orchis-kde
 
-# Install Vimix cursor themes (White and Black)
+# Install Vimix cursor themes
 echo "Installing Vimix cursor themes..."
 mkdir -p /tmp/vimix-cursors
 cd /tmp/vimix-cursors
 VIMIX_TAG=$(get_latest_tag "https://github.com/vinceliuice/Vimix-cursors.git")
 if [ -z "$VIMIX_TAG" ]; then
-  VIMIX_TAG="master"
+  VIMIX_TAG="master"  # Fallback to master as per hint
   echo "Warning: Could not fetch Vimix cursors tag, falling back to master" >&2
 fi
 git clone https://github.com/vinceliuice/Vimix-cursors.git --depth 1 --branch "$VIMIX_TAG" --single-branch && \
@@ -265,10 +293,10 @@ rc-update add udev || echo "Warning: Failed to add udev to boot services"
 # Configure PAM for XDG_RUNTIME_DIR
 echo "Configuring PAM for XDG_RUNTIME_DIR..."
 cat > /etc/pam.d/greetd << EOL
-auth       required   pam_rundir.so
+auth       required   pam-rundir.so
 auth       required   pam_unix.so
 account    required   pam_unix.so
-session    required   pam_rundir.so
+session    required   pam-rundir.so
 session    required   pam_limits.so
 session    required   pam_env.so
 session    required   pam_unix.so
@@ -383,9 +411,19 @@ EOL
   AUTOSTART="dbus-run-session -- idle-suspend.sh &"
 fi
 
-# Configure GTK theme, icons, and cursor
+# Configure GTK theme for all future GTK apps
 if [ -z "$SKIP_ORCHIS_GTK" ]; then
   cat > "$USER_HOME/.config/gtk-3.0/settings.ini" << EOL
+[Settings]
+gtk-theme-name=Orchis-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-cursor-theme-name=Vimix-White
+gtk-font-name=Roboto 10
+gtk-application-prefer-dark-theme=true
+gtk-button-images=true
+gtk-menu-images=true
+EOL
+  cat > "$USER_HOME/.config/gtk-4.0/settings.ini" << EOL
 [Settings]
 gtk-theme-name=Orchis-Dark
 gtk-icon-theme-name=Papirus-Dark
@@ -400,12 +438,13 @@ EOL
   }
 fi
 
-# Configure Qt theme and icons
+# Configure Qt theme for all future Qt apps
 if [ -z "$SKIP_ORCHIS_KDE" ]; then
+  mkdir -p "$USER_HOME/.config/qt5ct"
   cat > "$USER_HOME/.config/qt5ct/qt5ct.conf" << EOL
 [Appearance]
 style=fusion
-color_scheme=OrchisDark
+color_scheme_path=$QT_THEME_DIR/colors/OrchisDark.colors
 icon_theme=Papirus-Dark
 custom_palette=true
 [Palette]
@@ -413,6 +452,8 @@ active-highlight=#8AB4F8
 active-button=#3C4043
 active-window=#202124
 EOL
+  echo "export QT_STYLE_OVERRIDE=fusion" >> "$USER_HOME/.profile"
+  echo "export QT_QPA_PLATFORMTHEME=qt5ct" >> "$USER_HOME/.profile"
 fi
 
 # Configure gtkgreet
@@ -838,7 +879,7 @@ if grep -q "gtk-theme-name=Orchis-Dark" "\$CONFIG"; then
   sed -i 's/gtk-icon-theme-name=Papirus-Dark/gtk-icon-theme-name=Papirus-Light/' "\$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-White/gtk-cursor-theme-name=Vimix-Black/' "\$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=true/gtk-application-prefer-dark-theme=false/' "\$CONFIG"
-  sed -i 's/color_scheme=OrchisDark/color_scheme=OrchisLight/' "\$QTCONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=$QT_THEME_DIR\/colors\/OrchisLight.colors/' "\$QTCONFIG"
   sed -i 's/icon_theme=Papirus-Dark/icon_theme=Papirus-Light/' "\$QTCONFIG"
   sed -i 's/active-window=#202124/active-window=#F1F3F4/' "\$QTCONFIG"
   sed -i 's/active-highlight=#8AB4F8/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
@@ -868,7 +909,7 @@ else
   sed -i 's/gtk-icon-theme-name=Papirus-Light/gtk-icon-theme-name=Papirus-Dark/' "\$CONFIG"
   sed -i 's/gtk-cursor-theme-name=Vimix-Black/gtk-cursor-theme-name=Vimix-White/' "\$CONFIG"
   sed -i 's/gtk-application-prefer-dark-theme=false/gtk-application-prefer-dark-theme=true/' "\$CONFIG"
-  sed -i 's/color_scheme=OrchisLight/color_scheme=OrchisDark/' "\$QTCONFIG"
+  sed -i 's/color_scheme_path=.*/color_scheme_path=$QT_THEME_DIR\/colors\/OrchisDark.colors/' "\$QTCONFIG"
   sed -i 's/icon_theme=Papirus-Light/icon_theme=Papirus-Dark/' "\$QTCONFIG"
   sed -i 's/active-window=#F1F3F4/active-window=#202124/' "\$QTCONFIG"
   sed -i 's/active-highlight=#[0-9A-F]\{6\}/active-highlight='"\$DYNAMIC_COLOR"'/' "\$QTCONFIG"
@@ -1149,7 +1190,7 @@ rc-update add crond || echo "Warning: Failed to add crond to boot services"
 echo "Cleaning up build dependencies..."
 BUILDTIME_DEPS="rust cargo git openssl-dev musl-dev pkgconf lua-dev make sdl2-dev \
   cmake g++ qt5-qtbase-dev qt5-qtbase-x11 qt5-qtdeclarative-dev qt5-qttools-dev \
-  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev sassc"
+  imagemagick-dev dbus-dev udisks2-dev ffmpeg-dev"
 for pkg in $RUNTIME_DEPS; do
   BUILDTIME_DEPS=$(echo "$BUILDTIME_DEPS" | sed "s/\<$pkg\>//g")
 done
