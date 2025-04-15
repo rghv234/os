@@ -70,7 +70,15 @@ if ! command -v qtfm >/dev/null 2>&1; then
   }
   cd qtfm
   echo "Current directory: $(pwd)"
-  ls -l CMakeLists.txt 2>/dev/null || { echo "Error: CMakeLists.txt not found in $(pwd)" >&2; exit 1; }
+  # Ensure the working tree is populated
+  git checkout "$QTFM_TAG" 2>/dev/null || git checkout main
+  # Verify directory contents
+  if [ ! -f CMakeLists.txt ]; then
+    echo "Error: CMakeLists.txt not found in $(pwd)" >&2
+    ls -la
+    exit 1
+  fi
+  echo "Found CMakeLists.txt, proceeding with build..."
   command -v cmake >/dev/null 2>&1 || { echo "Installing cmake..." >&2; apk add cmake || { echo "Error: Failed to install cmake" >&2; exit 1; }; }
   cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 -DENABLE_MAGICK=true -DENABLE_FFMPEG=true . || {
     echo "Warning: qtfm CMake configuration failed, attempting qmake fallback" >&2
