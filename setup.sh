@@ -33,7 +33,7 @@ apk add --no-cache \
   bluez blueman linux-firmware pavucontrol \
   xdotool bash celluloid \
   rust cargo git musl-dev pkgconf lua-dev make sdl2-dev \
-  g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-glib poppler-dev || { echo "Failed to install packages" >&2; exit 1; }
+  g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-glib poppler-dev eudev-dev || { echo "Failed to install packages" >&2; exit 1; }
 
 # Define runtime dependencies
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
@@ -73,7 +73,7 @@ cargo install --git https://github.com/fishman/sleepwatcher-rs --locked || {
 if ! command -v fm >/dev/null 2>&1; then
   echo "Building fm..."
   mkdir -p /tmp/fm && cd /tmp/fm
-  retry_git_clone "https://github.com/euclio/fm.git" "main" "fm" || { echo "Error: fm clone failed" >&2; SKIP_FM=1; }
+  retry_git_clone "https://github.com/euclio/fm.git" "master" "fm" || { echo "Error: fm clone failed" >&2; SKIP_FM=1; }
   if [ -z "$SKIP_FM" ]; then
     cd fm
     [ ! -f Cargo.toml ] && { echo "Error: Cargo.toml not found" >&2; SKIP_FM=1; }
@@ -87,7 +87,7 @@ fi
 # Install Orchis GTK theme and wallpaper
 echo "Installing Orchis GTK theme and wallpaper..."
 mkdir -p /tmp/orchis && cd /tmp/orchis
-retry_git_clone "https://github.com/vinceliuice/Orchis-theme.git" "2023-07-25" "Orchis-theme" || { echo "Error: Orchis GTK clone failed" >&2; exit 1; }
+retry_git_clone "https://github.com/vinceliuice/Orchis-theme.git" "master" "Orchis-theme" || { echo "Error: Orchis GTK clone failed" >&2; exit 1; }
 cd Orchis-theme
 mkdir -p /usr/share/themes/Orchis-Dark
 [ -d "src/gtk-3.0" ] && cp -r src/gtk-3.0/* /usr/share/themes/Orchis-Dark/ || { echo "Warning: Orchis GTK 3.0 copy failed" >&2; SKIP_ORCHIS_GTK=1; }
@@ -937,7 +937,7 @@ main
 
 # Cleanup
 echo "Cleaning up..."
-BUILDTIME_DEPS="rust cargo git musl-dev pkgconf lua-dev make sdl2-dev g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-glib-dev"
+BUILDTIME_DEPS="rust cargo git musl-dev pkgconf lua-dev make sdl2-dev g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-dev eudev-dev"
 apk del $BUILDTIME_DEPS || echo "Warning: Failed to remove build dependencies" >&2
 rm -rf /tmp/*
 chmod +x /usr/local/bin/*
