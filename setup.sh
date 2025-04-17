@@ -107,7 +107,7 @@ cd /tmp
 # Install Vimix cursor themes
 echo "Installing Vimix cursor themes..."
 mkdir -p /tmp/vimix-cursors && cd /tmp/vimix-cursors
-retry_git_clone "https://github.com/vinceliuice/Vimix-cursors.git" "2020-10-10" "Vimix-cursors" || { echo "Error: Vimix cursors clone failed" >&2; exit 1; }
+retry_git_clone "https://github.com/vinceliuice/Vimix-cursors.git" "master" "Vimix-cursors" || { echo "Error: Vimix cursors clone failed" >&2; exit 1; }
 cd Vimix-cursors
 if [ -f "install.sh" ]; then
   /bin/bash install.sh || {
