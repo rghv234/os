@@ -33,7 +33,7 @@ apk add --no-cache \
   bluez blueman linux-firmware pavucontrol \
   xdotool bash celluloid \
   rust cargo git musl-dev pkgconf lua-dev make sdl2-dev \
-  g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-glib poppler-glib-dev || { echo "Failed to install packages" >&2; exit 1; }
+  g++ gtk4.0-dev libpanel-dev libadwaita-dev gtksourceview5-dev poppler-glib poppler-dev || { echo "Failed to install packages" >&2; exit 1; }
 
 # Define runtime dependencies
 RUNTIME_DEPS="labwc sfwbar foot badwolf greetd-gtkgreet wbg waylock mupdf mako \
