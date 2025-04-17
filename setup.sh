@@ -14,7 +14,11 @@ SKIP_VIMIX=""
 
 # Configure repositories
 echo "Configuring package repositories..."
-setup-apkrepos -1 || { echo "Failed to configure package repositories" >&2; exit 1; }
+cat > /etc/apk/repositories << EOF
+https://dl-cdn.alpinelinux.org/alpine/edge/main
+https://dl-cdn.alpinelinux.org/alpine/edge/community
+https://dl-cdn.alpinelinux.org/alpine/edge/testing
+EOF
 apk update || { echo "Failed to update package repositories" >&2; exit 1; }
 
 # Install Wayland base and additional packages
